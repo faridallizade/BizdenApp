@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/api/">
+    <Project Path="apps/api/Bizden.Api/Bizden.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Bizden.Application/Bizden.Application.csproj" />
+    <Project Path="src/Bizden.Domain/Bizden.Domain.csproj" />
+    <Project Path="src/Bizden.Infrastructure/Bizden.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Bizden.IntegrationTests/Bizden.IntegrationTests.csproj" />
+    <Project Path="tests/Bizden.UnitTests/Bizden.UnitTests.csproj" />
+  </Folder>
+</Solution>
