@@ -1,0 +1,9 @@
+[Bb]in/
+[Oo]bj/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+secrets.json
+.DS_Store

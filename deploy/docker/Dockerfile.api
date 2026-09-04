@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY Directory.Build.props Bizden.slnx ./
+COPY src/Bizden.Domain/Bizden.Domain.csproj src/Bizden.Domain/
+COPY src/Bizden.Application/Bizden.Application.csproj src/Bizden.Application/
+COPY src/Bizden.Infrastructure/Bizden.Infrastructure.csproj src/Bizden.Infrastructure/
+COPY apps/api/Bizden.Api/Bizden.Api.csproj apps/api/Bizden.Api/
+RUN dotnet restore apps/api/Bizden.Api/Bizden.Api.csproj
+
+COPY src/ src/
+COPY apps/api/ apps/api/
+RUN dotnet publish apps/api/Bizden.Api/Bizden.Api.csproj --configuration Release --no-restore --output /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+EXPOSE 8080
+COPY --from=build /app/publish ./
+ENTRYPOINT ["dotnet", "Bizden.Api.dll"]

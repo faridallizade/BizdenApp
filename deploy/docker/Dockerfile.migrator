@@ -1,0 +1,14 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+WORKDIR /src
+
+COPY Directory.Build.props Bizden.slnx ./
+COPY src/Bizden.Domain/Bizden.Domain.csproj src/Bizden.Domain/
+COPY src/Bizden.Application/Bizden.Application.csproj src/Bizden.Application/
+COPY src/Bizden.Infrastructure/Bizden.Infrastructure.csproj src/Bizden.Infrastructure/
+COPY apps/api/Bizden.Api/Bizden.Api.csproj apps/api/Bizden.Api/
+RUN dotnet restore src/Bizden.Infrastructure/Bizden.Infrastructure.csproj \
+    && dotnet tool install dotnet-ef --tool-path /tools --version 8.0.11
+
+COPY src/ src/
+COPY apps/api/ apps/api/
+ENTRYPOINT ["/tools/dotnet-ef", "database", "update", "--project", "src/Bizden.Infrastructure/Bizden.Infrastructure.csproj", "--startup-project", "apps/api/Bizden.Api/Bizden.Api.csproj", "--context", "BizdenDbContext"]

@@ -1,0 +1,62 @@
+name: bizden
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bizden-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bizden_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-bizden}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bizden_local_password}
+    ports:
+      - "55432:5432"
+    volumes:
+      - bizden_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.migrator
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-bizden_dev};Username=${POSTGRES_USER:-bizden};Password=${POSTGRES_PASSWORD:-bizden_local_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.api
+    container_name: bizden-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-bizden_dev};Username=${POSTGRES_USER:-bizden};Password=${POSTGRES_PASSWORD:-bizden_local_password}
+      R2__Endpoint: ${R2__Endpoint:-}
+      R2__Bucket: ${R2__Bucket:-}
+      R2__AccessKeyId: ${R2__AccessKeyId:-}
+      R2__SecretAccessKey: ${R2__SecretAccessKey:-}
+    ports:
+      - "55080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.web
+    container_name: bizden-web
+    ports:
+      - "55173:80"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  bizden_postgres_data:

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\apps\api\Bizden.Api\Bizden.Api.csproj" />
+    <ProjectReference Include="..\..\src\Bizden.Infrastructure\Bizden.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
