@@ -4,11 +4,13 @@
 
 | Service | Host port | Container port |
 |---|---:|---:|
-| Web | 55173 | 80 |
-| API | 55080 | 8080 |
-| PostgreSQL | 55432 | 5432 |
+| Web | `WEB_PORT` (default: 58081) | 80 |
+| API | Not exposed | 8080 |
+| PostgreSQL | Not exposed | 5432 |
 
-These ports intentionally avoid the currently used 1433, 1435, 5432, 5080, 5173 and 6379 ports.
+The API and database are only available inside Docker. Nginx in the web container proxies `/api` to the API container. This avoids host-port conflicts and allows the same web URL to work from another device.
+
+On Windows, set `WEB_PORT` in the root `.env` file. If the port is occupied or reserved by Windows/WSL, choose another unused value such as `58082`, then start the stack again. Open `http://localhost:<WEB_PORT>`.
 
 ## Start
 
