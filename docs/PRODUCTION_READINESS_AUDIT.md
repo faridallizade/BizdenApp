@@ -59,7 +59,7 @@ If `58081` is unavailable, change only this value to `58082`, run `docker compos
 
 **Risk:** R2 accepts browser PUT uploads only from explicitly allowed origins. A wrong origin creates browser CORS errors even though API login works.
 
-**Required now for local test:** add `http://localhost:58081` to R2 CORS. If `WEB_PORT` changes, update that origin too.
+**Required now for local test:** add `http://localhost:58081` to R2 CORS. If `WEB_PORT` changes, update that origin too. In the Cloudflare dashboard CORS JSON tab, use the dashboard array format (for example `[{"AllowedOrigins":["http://localhost:58081"],"AllowedMethods":["PUT","HEAD"],"AllowedHeaders":["Content-Type"]}]`), not the Wrangler CLI `rules` wrapper format.
 
 **Required for public:** add only the final `https://your-domain` origin. Do not use `*` because browser uploads are permission-sensitive.
 

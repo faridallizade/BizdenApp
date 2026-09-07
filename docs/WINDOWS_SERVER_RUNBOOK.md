@@ -72,19 +72,15 @@ If Docker reports that WSL is unresponsive:
 The browser uploads photos directly to private Cloudflare R2 using a ten-minute signed URL. Configure R2 CORS for each browser origin used for testing or deployment. For local use this includes:
 
 ```json
-{
-  "rules": [
-    {
-      "allowed": {
-        "origins": ["http://localhost:58081"],
-        "methods": ["PUT", "HEAD"],
-        "headers": ["Content-Type"]
-      },
-      "exposeHeaders": ["ETag"],
-      "maxAgeSeconds": 3600
-    }
-  ]
-}
+[
+  {
+    "AllowedOrigins": ["http://localhost:58081"],
+    "AllowedMethods": ["PUT", "HEAD"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
 ```
 
 When a Cloudflare Tunnel and domain are added, add that HTTPS domain as another origin. Do not use a wildcard origin.
