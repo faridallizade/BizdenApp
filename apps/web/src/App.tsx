@@ -3,7 +3,9 @@ import type { FormEvent } from 'react'
 import { toDataURL } from 'qrcode'
 import './App.css'
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:55080'
+// Nginx proxies /api to the API container. Keeping requests same-origin means
+// the app also works from a phone or another computer, not only localhost.
+const apiBaseUrl = ''
 const blankEvent = () => ({ name: '', description: '', eventDate: '', timeZone: 'Asia/Baku', uploadStartAt: '', uploadEndAt: '', status: 'Draft' })
 type Session = { id: string; name: string; email: string }
 type EventItem = { id: string; name: string; description?: string; eventDate: string; timeZone: string; uploadStartAt: string; uploadEndAt: string; status: 'Draft' | 'Active' | 'Closed'; invitationCount: number }
