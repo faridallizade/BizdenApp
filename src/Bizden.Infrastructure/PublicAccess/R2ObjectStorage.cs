@@ -1,3 +1,4 @@
+using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.S3.Util;
@@ -11,6 +12,7 @@ public sealed class R2ObjectStorage : IObjectStorage
     public R2ObjectStorage(IConfiguration config)
     {
         var endpoint = config["R2:Endpoint"]; bucket = config["R2:Bucket"]; var accessKey = config["R2:AccessKeyId"]; var secret = config["R2:SecretAccessKey"];
+        AWSConfigsS3.UseSignatureVersion4 = true;
         if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(bucket) && !string.IsNullOrWhiteSpace(accessKey) && !string.IsNullOrWhiteSpace(secret)) client = new AmazonS3Client(accessKey, secret, new AmazonS3Config { ServiceURL = endpoint, ForcePathStyle = true, AuthenticationRegion = "auto" });
     }
     public Task<string?> PresignPutAsync(string key, string contentType, CancellationToken ct) => client is null || bucket is null ? Task.FromResult<string?>(null) : Task.FromResult<string?>(client.GetPreSignedURL(new GetPreSignedUrlRequest { BucketName = bucket, Key = key, Verb = HttpVerb.PUT, ContentType = contentType, Expires = DateTime.UtcNow.AddMinutes(10) }));
