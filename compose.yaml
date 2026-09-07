@@ -39,8 +39,6 @@ services:
       R2__Bucket: ${R2__Bucket:-}
       R2__AccessKeyId: ${R2__AccessKeyId:-}
       R2__SecretAccessKey: ${R2__SecretAccessKey:-}
-    ports:
-      - "55080:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
