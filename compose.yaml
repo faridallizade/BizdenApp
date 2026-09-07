@@ -8,8 +8,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-bizden_dev}
       POSTGRES_USER: ${POSTGRES_USER:-bizden}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bizden_local_password}
-    ports:
-      - "55432:5432"
     volumes:
       - bizden_postgres_data:/var/lib/postgresql/data
     healthcheck:
