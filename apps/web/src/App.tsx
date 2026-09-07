@@ -21,6 +21,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 function toApiDate(value: string) { return new Date(value).toISOString() }
 function toInputDate(value: string) { return value ? new Date(value).toISOString().slice(0, 16) : '' }
 function formatDate(value: string) { return new Intl.DateTimeFormat('az-AZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
+function newIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+}
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
   const [isRegistering, setIsRegistering] = useState(false); const [isSubmitting, setIsSubmitting] = useState(false); const [message, setMessage] = useState('')
@@ -61,7 +65,7 @@ function GuestScreen({ token }: { token: string }) {
     event.preventDefault(); const input = event.currentTarget.elements.namedItem('photos') as HTMLInputElement; const files = Array.from(input.files ?? []); if (!files.length) return; setReserving(true); setMessage('')
     try {
       const results = await Promise.all(files.map(async file => {
-        const reserved = await request<{ state: string; reservationId?: string }>(`/api/public/qr/${token}/reservations`, { method: 'POST', body: JSON.stringify({ fileName: file.name, mimeType: file.type, fileSize: file.size, idempotencyKey: crypto.randomUUID() }) })
+        const reserved = await request<{ state: string; reservationId?: string }>(`/api/public/qr/${token}/reservations`, { method: 'POST', body: JSON.stringify({ fileName: file.name, mimeType: file.type, fileSize: file.size, idempotencyKey: newIdempotencyKey() }) })
         if (reserved.state !== 'RESERVED' || !reserved.reservationId) return reserved.state
         const signed = await request<{ state: string; url?: string }>(`/api/public/qr/${token}/reservations/${reserved.reservationId}/upload-url`, { method: 'POST' })
         if (signed.state !== 'READY' || !signed.url) return signed.state
