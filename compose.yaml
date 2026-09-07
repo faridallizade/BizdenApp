@@ -39,6 +39,8 @@ services:
       R2__Bucket: ${R2__Bucket:-}
       R2__AccessKeyId: ${R2__AccessKeyId:-}
       R2__SecretAccessKey: ${R2__SecretAccessKey:-}
+    volumes:
+      - bizden_data_protection_keys:/root/.aspnet/DataProtection-Keys
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -56,3 +58,4 @@ services:
 
 volumes:
   bizden_postgres_data:
+  bizden_data_protection_keys:
