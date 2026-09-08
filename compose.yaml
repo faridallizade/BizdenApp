@@ -45,6 +45,7 @@ services:
       Smtp__UserName: ${Smtp__UserName:-}
       Smtp__Password: ${Smtp__Password:-}
       Smtp__From: ${Smtp__From:-}
+      Smtp__FromName: ${Smtp__FromName:-Bizdən}
       Smtp__EnableSsl: ${Smtp__EnableSsl:-true}
     volumes:
       - bizden_data_protection_keys:/root/.aspnet/DataProtection-Keys

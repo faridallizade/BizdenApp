@@ -33,6 +33,8 @@ public sealed class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEm
                 Body = $"Bizdən hesabınızı təsdiqləmək üçün kodunuz: {code}\n\nKod 15 dəqiqə etibarlıdır.",
                 IsBodyHtml = false
             };
+            var fromName = configuration["Smtp:FromName"];
+            if (!string.IsNullOrWhiteSpace(fromName)) message.From = new MailAddress(from, fromName);
             await client.SendMailAsync(message, cancellationToken);
             return true;
         }
