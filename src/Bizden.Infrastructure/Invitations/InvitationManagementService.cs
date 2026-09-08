@@ -1,13 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using Bizden.Application.Invitations;
+using Bizden.Application.Auditing;
 using Bizden.Domain.Entities;
 using Bizden.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bizden.Infrastructure.Invitations;
 
-public sealed class InvitationManagementService(BizdenDbContext dbContext) : IInvitationManagementService
+public sealed class InvitationManagementService(BizdenDbContext dbContext, IAuditLogService audit) : IInvitationManagementService
 {
     public async Task<IReadOnlyList<InvitationSummary>> ListAsync(Guid ownerId, Guid eventId, CancellationToken cancellationToken)
     {
@@ -30,6 +31,7 @@ public sealed class InvitationManagementService(BizdenDbContext dbContext) : IIn
             tokens.Add(new InvitationTokenResult(ToSummary(invitation), token));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
+        await audit.RecordAsync(ownerId, "Host", "InvitationsCreated", "Event", command.EventId, $"count={command.Count}", cancellationToken);
         return new InvitationBatchResult(tokens);
     }
 
@@ -41,6 +43,7 @@ public sealed class InvitationManagementService(BizdenDbContext dbContext) : IIn
         if (invitation is null || command.UploadLimit < invitation.ReservedUploads + invitation.CompletedUploads) throw new ArgumentException("New limit cannot be lower than already used uploads.");
         invitation.Label = CleanLabel(command.Label); invitation.UploadLimit = command.UploadLimit; invitation.ExpiresAt = command.ExpiresAt; invitation.IsActive = command.IsActive;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await audit.RecordAsync(ownerId, "Host", "InvitationUpdated", "Invitation", invitation.Id, $"active={invitation.IsActive};limit={invitation.UploadLimit}", cancellationToken);
         return ToSummary(invitation);
     }
 
@@ -54,6 +57,7 @@ public sealed class InvitationManagementService(BizdenDbContext dbContext) : IIn
         var replacement = new Invitation { Id = Guid.NewGuid(), EventId = eventId, TokenHash = Hash(token), Label = oldInvitation.Label, UploadLimit = oldInvitation.UploadLimit, IsActive = true, ExpiresAt = oldInvitation.ExpiresAt, CreatedAt = DateTimeOffset.UtcNow };
         dbContext.Invitations.Add(replacement);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await audit.RecordAsync(ownerId, "Host", "InvitationRegenerated", "Invitation", oldInvitation.Id, $"replacementId={replacement.Id}", cancellationToken);
         return new InvitationTokenResult(ToSummary(replacement), token);
     }
 

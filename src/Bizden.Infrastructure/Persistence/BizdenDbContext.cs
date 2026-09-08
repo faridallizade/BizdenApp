@@ -10,6 +10,7 @@ public sealed class BizdenDbContext(DbContextOptions<BizdenDbContext> options) :
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<Photo> Photos => Set<Photo>();
     public DbSet<UploadReservation> UploadReservations => Set<UploadReservation>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

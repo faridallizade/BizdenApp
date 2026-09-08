@@ -1,9 +1,11 @@
 using Bizden.Application.Authentication;
+using Bizden.Application.Auditing;
 using Bizden.Application.Events;
 using Bizden.Application.Invitations;
 using Bizden.Application.PublicAccess;
 using Bizden.Application.Photos;
 using Bizden.Infrastructure.Authentication;
+using Bizden.Infrastructure.Auditing;
 using Bizden.Infrastructure.Events;
 using Bizden.Infrastructure.Invitations;
 using Bizden.Infrastructure.PublicAccess;
@@ -24,6 +26,7 @@ public static class ServiceCollectionExtensions
 
         services.AddDbContext<BizdenDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IHostAuthenticationService, HostAuthenticationService>();
+        services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IHostEventService, HostEventService>();
         services.AddScoped<IInvitationManagementService, InvitationManagementService>();
         services.AddScoped<IPublicQrService, PublicQrService>();

@@ -1,13 +1,14 @@
 using System.Globalization;
 using System.Text;
 using Bizden.Application.Events;
+using Bizden.Application.Auditing;
 using Bizden.Domain.Entities;
 using Bizden.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bizden.Infrastructure.Events;
 
-public sealed class HostEventService(BizdenDbContext dbContext) : IHostEventService
+public sealed class HostEventService(BizdenDbContext dbContext, IAuditLogService audit) : IHostEventService
 {
     public async Task<IReadOnlyList<HostEventSummary>> ListAsync(Guid ownerId, CancellationToken cancellationToken) => await dbContext.Events
         .AsNoTracking().Where(@event => @event.OwnerId == ownerId).OrderByDescending(@event => @event.EventDate)
@@ -32,6 +33,7 @@ public sealed class HostEventService(BizdenDbContext dbContext) : IHostEventServ
         };
         dbContext.Events.Add(@event);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await audit.RecordAsync(ownerId, "Host", "EventCreated", "Event", @event.Id, $"status={@event.Status}", cancellationToken);
         return ToDetails(@event);
     }
 
@@ -45,6 +47,7 @@ public sealed class HostEventService(BizdenDbContext dbContext) : IHostEventServ
         @event.TimeZone = command.TimeZone.Trim(); @event.UploadStartAt = command.UploadStartAt; @event.UploadEndAt = command.UploadEndAt;
         @event.Status = command.Status; @event.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await audit.RecordAsync(ownerId, "Host", "EventUpdated", "Event", @event.Id, $"status={@event.Status}", cancellationToken);
         return ToDetails(@event);
     }
 

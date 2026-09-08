@@ -1,4 +1,5 @@
 using Bizden.Application.Authentication;
+using Bizden.Application.Auditing;
 using Bizden.Domain.Entities;
 using Bizden.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bizden.Infrastructure.Authentication;
 
-public sealed class HostAuthenticationService(BizdenDbContext dbContext) : IHostAuthenticationService
+public sealed class HostAuthenticationService(BizdenDbContext dbContext, IAuditLogService audit) : IHostAuthenticationService
 {
     private readonly PasswordHasher<HostUser> passwordHasher = new();
 
@@ -16,7 +17,7 @@ public sealed class HostAuthenticationService(BizdenDbContext dbContext) : IHost
         var email = command.Email.Trim();
         var normalizedEmail = email.ToUpperInvariant();
 
-        if (string.IsNullOrWhiteSpace(name) || name.Length > 120 || string.IsNullOrWhiteSpace(email) || email.Length > 256 || command.Password.Length < 12)
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 120 || string.IsNullOrWhiteSpace(email) || email.Length > 256 || command.Password.Length < 8 || !command.Password.Any(char.IsDigit))
         {
             return new HostAuthenticationResult(null, "INVALID_REGISTRATION");
         }
@@ -40,6 +41,7 @@ public sealed class HostAuthenticationService(BizdenDbContext dbContext) : IHost
 
         dbContext.HostUsers.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await audit.RecordAsync(user.Id, "Host", "HostRegistered", "HostUser", user.Id, null, cancellationToken);
         return new HostAuthenticationResult(user, null);
     }
 
@@ -66,6 +68,7 @@ public sealed class HostAuthenticationService(BizdenDbContext dbContext) : IHost
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
+        await audit.RecordAsync(user.Id, "Host", "HostAuthenticated", "HostUser", user.Id, null, cancellationToken);
         return new HostAuthenticationResult(user, null);
     }
 }

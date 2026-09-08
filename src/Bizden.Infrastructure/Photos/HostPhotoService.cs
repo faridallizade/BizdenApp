@@ -1,4 +1,5 @@
 using Bizden.Application.Photos;
+using Bizden.Application.Auditing;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.Persistence;
 using Bizden.Infrastructure.PublicAccess;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bizden.Infrastructure.Photos;
 
-public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage) : IHostPhotoService
+public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage, IAuditLogService audit) : IHostPhotoService
 {
     public async Task<HostPhotoPage?> ListAsync(Guid ownerId, Guid eventId, Guid? invitationId, int page, int pageSize, CancellationToken ct)
     {
@@ -35,6 +36,7 @@ public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage)
         if (photo is null) return false;
         photo.Status = PhotoStatus.Deleted; photo.DeletedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await audit.RecordAsync(ownerId, "Host", "PhotoDeleted", "Photo", photo.Id, $"eventId={photo.EventId}", ct);
         return true;
     }
 
