@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
 
@@ -35,42 +34,61 @@ public sealed class PhotoProcessingWorker(IServiceScopeFactory scopes, ILogger<P
 
         foreach (var photo in photos)
         {
+            var source = await storage.DownloadAsync(photo.StorageKey, ct);
+            if (source is null)
+            {
+                photo.ProcessingError = "SourceUnavailable";
+                logger.LogWarning("Photo {PhotoId} source is unavailable; processing will be retried", photo.Id);
+                continue;
+            }
+
+            Image image;
             try
             {
-                var source = await storage.DownloadAsync(photo.StorageKey, ct)
-                    ?? throw new InvalidOperationException("Source object is unavailable.");
-                using var image = Image.Load(source);
-                image.Mutate(x => x.AutoOrient());
-                image.Metadata.ExifProfile = null;
-
-                photo.Width = image.Width;
-                photo.Height = image.Height;
-                var previewKey = $"derivatives/{photo.Id:N}/preview.jpg";
-                var thumbnailKey = $"derivatives/{photo.Id:N}/thumbnail.jpg";
-                using var preview = image.Clone(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(1600, 1600) }));
-                using var thumbnail = image.Clone(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Crop, Size = new Size(480, 480) }));
-
-                if (!await storage.UploadAsync(previewKey, "image/jpeg", Encode(preview, 85), ct)
-                    || !await storage.UploadAsync(thumbnailKey, "image/jpeg", Encode(thumbnail, 78), ct))
-                    throw new InvalidOperationException("Derivative upload failed.");
-
-                photo.PreviewStorageKey = previewKey;
-                photo.ThumbnailStorageKey = thumbnailKey;
-                photo.ProcessingError = null;
-                photo.MediaProcessedAt = DateTimeOffset.UtcNow;
+                image = Image.Load(source);
             }
-            catch (UnknownImageFormatException exception)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                Quarantine(photo, exception);
-            }
-            catch (InvalidImageContentException exception)
-            {
-                Quarantine(photo, exception);
+                throw;
             }
             catch (Exception exception)
             {
-                photo.ProcessingError = exception.GetType().Name;
-                logger.LogWarning(exception, "Photo {PhotoId} processing will be retried", photo.Id);
+                Quarantine(photo, exception);
+                continue;
+            }
+
+            using (image)
+            {
+                try
+                {
+                    image.Mutate(x => x.AutoOrient());
+                    image.Metadata.ExifProfile = null;
+
+                    photo.Width = image.Width;
+                    photo.Height = image.Height;
+                    var previewKey = $"derivatives/{photo.Id:N}/preview.jpg";
+                    var thumbnailKey = $"derivatives/{photo.Id:N}/thumbnail.jpg";
+                    using var preview = image.Clone(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(1600, 1600) }));
+                    using var thumbnail = image.Clone(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Crop, Size = new Size(480, 480) }));
+
+                    if (!await storage.UploadAsync(previewKey, "image/jpeg", Encode(preview, 85), ct)
+                        || !await storage.UploadAsync(thumbnailKey, "image/jpeg", Encode(thumbnail, 78), ct))
+                        throw new InvalidOperationException("Derivative upload failed.");
+
+                    photo.PreviewStorageKey = previewKey;
+                    photo.ThumbnailStorageKey = thumbnailKey;
+                    photo.ProcessingError = null;
+                    photo.MediaProcessedAt = DateTimeOffset.UtcNow;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    photo.ProcessingError = exception.GetType().Name;
+                    logger.LogWarning(exception, "Photo {PhotoId} derivative processing will be retried", photo.Id);
+                }
             }
         }
 
