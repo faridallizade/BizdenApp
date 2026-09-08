@@ -1,4 +1,5 @@
-bizden.duckdns.org {
+{$PUBLIC_HOST:bizden.duckdns.org} {
     encode zstd gzip
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
     reverse_proxy web:80
 }

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Bizden.Application.Authentication;
@@ -8,14 +9,18 @@ using Bizden.Application.PublicAccess;
 using Bizden.Application.Photos;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.DependencyInjection;
+using Bizden.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 var isDevelopment = builder.Environment.IsDevelopment();
 
 builder.Services.AddHealthChecks();
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65_536);
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
@@ -30,25 +35,66 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // The API is reachable only from the Docker network; Caddy/Nginx addresses are dynamic.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.Name = isDevelopment ? "bizden-csrf" : "__Host-bizden-csrf";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = isDevelopment ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+});
 builder.Services.AddCors(options => options.AddPolicy("web", policy => policy
     .WithOrigins(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
     .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
-builder.Services.AddRateLimiter(options => options.AddPolicy("host-auth", context =>
-    RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("host-auth", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("public-qr", context =>
     {
-        PermitLimit = 5,
-        Window = TimeSpan.FromMinutes(1),
-        QueueLimit = 0
-    })));
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var token = context.Request.RouteValues["token"]?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter($"{ip}:{token}", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+    });
+});
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseCors("web");
 app.UseRateLimiter();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method))
+    {
+        if (context.Request.Path.StartsWithSegments("/api/host") && !context.Request.Path.StartsWithSegments("/api/host/antiforgery"))
+        {
+            try { await context.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(context); }
+            catch (AntiforgeryValidationException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; await context.Response.WriteAsJsonAsync(new { code = "INVALID_CSRF", message = "Request could not be verified." }); return; }
+        }
+    }
+    await next();
+});
+app.Use(async (context, next) =>
+{
+    var stopwatch = Stopwatch.StartNew(); await next();
+    context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Bizden.RequestAudit")
+        .LogInformation("HTTP request completed {Method} {StatusCode} in {ElapsedMilliseconds}ms", context.Request.Method, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
+});
 app.UseAuthorization();
 
 app.MapGet("/", () => Results.Ok(new { service = "Bizdən API", status = "ready" }));
 app.MapHealthChecks("/health");
+app.MapGet("/health/ready", async (BizdenDbContext db, CancellationToken cancellationToken) =>
+    await db.Database.CanConnectAsync(cancellationToken) ? Results.Ok(new { status = "ready" }) : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+app.MapGet("/api/host/antiforgery", (IAntiforgery antiforgery, HttpContext context) => Results.Ok(new { token = antiforgery.GetAndStoreTokens(context).RequestToken }));
 
 var auth = app.MapGroup("/api/host/auth").RequireRateLimiting("host-auth");
 auth.MapPost("/register", async (RegisterHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
@@ -124,7 +170,7 @@ photos.MapGet("/{photoId:guid}/download", async (Guid photoId, ClaimsPrincipal u
 photos.MapDelete("/{photoId:guid}", async (Guid photoId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
     await service.DeleteAsync(OwnerId(user), photoId, cancellationToken) ? Results.NoContent() : Results.NotFound());
 
-var publicQr = app.MapGroup("/api/public/qr");
+var publicQr = app.MapGroup("/api/public/qr").RequireRateLimiting("public-qr");
 publicQr.MapGet("/{token}", async (string token, IPublicQrService service, CancellationToken cancellationToken) => Results.Ok(await service.GetAsync(token, cancellationToken)));
 publicQr.MapPost("/{token}/reservations", async (string token, ReserveUploadRequest request, IPublicQrService service, CancellationToken cancellationToken) =>
     Results.Ok(await service.ReserveAsync(token, new ReserveUploadCommand(request.FileName, request.MimeType, request.FileSize, request.IdempotencyKey), cancellationToken)));

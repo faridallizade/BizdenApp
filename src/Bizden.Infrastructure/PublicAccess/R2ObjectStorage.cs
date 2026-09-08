@@ -25,7 +25,16 @@ public sealed class R2ObjectStorage : IObjectStorage
     public Task<string?> PresignGetAsync(string key, string contentType, CancellationToken ct) => client is null || bucket is null ? Task.FromResult<string?>(null) : Task.FromResult<string?>(client.GetPreSignedURL(new GetPreSignedUrlRequest { BucketName = bucket, Key = key, Verb = HttpVerb.GET, Expires = DateTime.UtcNow.AddMinutes(10), ResponseHeaderOverrides = { ContentType = contentType } }));
     public async Task<bool> VerifyAsync(string key, long size, string contentType, CancellationToken ct)
     {
-        if (client is null || bucket is null) return false; try { var result = await client.GetObjectMetadataAsync(bucket, key, ct); return result.ContentLength == size && string.Equals(result.Headers.ContentType, contentType, StringComparison.OrdinalIgnoreCase); } catch (AmazonS3Exception) { return false; }
+        if (client is null || bucket is null) return false;
+        try
+        {
+            var metadata = await client.GetObjectMetadataAsync(bucket, key, ct);
+            if (metadata.ContentLength != size || !string.Equals(metadata.Headers.ContentType, contentType, StringComparison.OrdinalIgnoreCase)) return false;
+            using var result = await client.GetObjectAsync(bucket, key, ct);
+            var bytes = new byte[32]; var read = await result.ResponseStream.ReadAsync(bytes, ct);
+            return HasMatchingImageSignature(bytes.AsSpan(0, read), contentType);
+        }
+        catch (AmazonS3Exception) { return false; }
     }
     public async Task<bool> DeleteAsync(string key, CancellationToken ct)
     {
@@ -33,4 +42,13 @@ public sealed class R2ObjectStorage : IObjectStorage
         try { await client.DeleteObjectAsync(bucket, key, ct); return true; }
         catch (AmazonS3Exception) { return false; }
     }
+
+    private static bool HasMatchingImageSignature(ReadOnlySpan<byte> bytes, string contentType) => contentType switch
+    {
+        "image/jpeg" => bytes.Length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff,
+        "image/png" => bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a }),
+        "image/webp" => bytes.Length >= 12 && bytes[..4].SequenceEqual("RIFF"u8) && bytes.Slice(8, 4).SequenceEqual("WEBP"u8),
+        "image/heic" => bytes.Length >= 12 && bytes.Slice(4, 4).SequenceEqual("ftyp"u8) && (bytes.Slice(8, 4).SequenceEqual("heic"u8) || bytes.Slice(8, 4).SequenceEqual("heix"u8) || bytes.Slice(8, 4).SequenceEqual("mif1"u8)),
+        _ => false
+    };
 }

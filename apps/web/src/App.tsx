@@ -12,8 +12,18 @@ type EventItem = { id: string; name: string; description?: string; eventDate: st
 type Invitation = { id: string; label?: string; uploadLimit: number; reservedUploads: number; completedUploads: number; isActive: boolean; expiresAt?: string; createdAt: string }
 type InvitationToken = { invitation: Invitation; token: string }
 
+let csrfToken: Promise<string> | null = null
+function getCsrfToken() {
+  csrfToken ??= fetch('/api/host/antiforgery', { credentials: 'include' }).then(async response => {
+    if (!response.ok) throw new Error('Təhlükəsizlik tokeni alına bilmədi.')
+    return (await response.json() as { token: string }).token
+  })
+  return csrfToken
+}
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...init?.headers }, ...init })
+  const method = init?.method?.toUpperCase() ?? 'GET'
+  const csrf = path.startsWith('/api/host/') && !path.endsWith('/antiforgery') && !['GET', 'HEAD', 'OPTIONS'].includes(method) ? await getCsrfToken() : undefined
+  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}), ...init?.headers }, ...init })
   const data = response.status === 204 ? null : await response.json()
   if (!response.ok) throw new Error(data?.message ?? 'Sorğu tamamlanmadı.')
   return data as T

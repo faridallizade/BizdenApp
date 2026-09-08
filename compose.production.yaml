@@ -1,0 +1,13 @@
+services:
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Cors__AllowedOrigins__0: https://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}
+
+  web:
+    # Caddy is the only public entry point; web stays on the Docker network.
+    ports: !reset []
+
+  caddy:
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST in .env}
