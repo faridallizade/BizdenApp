@@ -13,19 +13,26 @@ type Invitation = { id: string; label?: string; uploadLimit: number; reservedUpl
 type InvitationToken = { invitation: Invitation; token: string }
 
 let csrfToken: Promise<string> | null = null
-function getCsrfToken() {
+function getCsrfToken(refresh = false) {
+  if (refresh) csrfToken = null
   csrfToken ??= fetch('/api/host/antiforgery', { credentials: 'include' }).then(async response => {
     if (!response.ok) throw new Error('Təhlükəsizlik tokeni alına bilmədi.')
     return (await response.json() as { token: string }).token
   })
   return csrfToken
 }
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retryCsrf = true): Promise<T> {
   const method = init?.method?.toUpperCase() ?? 'GET'
   const csrf = path.startsWith('/api/host/') && !path.endsWith('/antiforgery') && !['GET', 'HEAD', 'OPTIONS'].includes(method) ? await getCsrfToken() : undefined
   const response = await fetch(`${apiBaseUrl}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}), ...init?.headers }, ...init })
   const data = response.status === 204 ? null : await response.json()
-  if (!response.ok) throw new Error(data?.message ?? 'Sorğu tamamlanmadı.')
+  if (!response.ok) {
+    if (csrf && retryCsrf && data?.code === 'INVALID_CSRF') {
+      await getCsrfToken(true)
+      return request<T>(path, init, false)
+    }
+    throw new Error(data?.message ?? 'Sorğu tamamlanmadı.')
+  }
   return data as T
 }
 function toApiDate(value: string) { return new Date(value).toISOString() }
@@ -39,7 +46,7 @@ function newIdempotencyKey() {
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
   const [isRegistering, setIsRegistering] = useState(false); const [isSubmitting, setIsSubmitting] = useState(false); const [showPassword, setShowPassword] = useState(false); const [message, setMessage] = useState('')
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setIsSubmitting(true); setMessage(''); const body = isRegistering ? { name: form.get('name'), email: form.get('email'), password: form.get('password') } : { email: form.get('email'), password: form.get('password') }; try { onAuthenticated(await request<Session>(`/api/host/auth/${isRegistering ? 'register' : 'login'}`, { method: 'POST', body: JSON.stringify(body) })) } catch (error) { setMessage(error instanceof Error ? error.message : 'Giriş alınmadı.') } finally { setIsSubmitting(false) } }
-  return <main className="app-shell"><section className="auth-card" aria-labelledby="page-title"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən — Anılarınız, bizdən." /><p className="eyebrow">Host portal</p><h1 id="page-title">{isRegistering ? 'Hesab yaradın' : 'Xoş gördük'}</h1><p className="description">Tədbir xatirələrinizi idarə etmək üçün daxil olun.</p><form onSubmit={submit}>{isRegistering ? <label>Ad<input name="name" required maxLength={120} autoComplete="name" /></label> : null}<label>Email<input name="email" type="email" required maxLength={256} autoComplete="email" /></label><label>Şifrə<span className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} required minLength={8} pattern=".*[0-9].*" title="Minimum 8 simvol və ən az 1 rəqəm daxil edin." autoComplete={isRegistering ? 'new-password' : 'current-password'} /><button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Şifrəni gizlət' : 'Şifrəni göstər'}>{showPassword ? 'Gizlət' : 'Göstər'}</button></span>{isRegistering ? <small>Minimum 8 simvol və ən az 1 rəqəm.</small> : null}</label>{message ? <p className="error" role="alert">{message}</p> : null}<button className="primary" disabled={isSubmitting}>{isSubmitting ? 'Gözləyin...' : isRegistering ? 'Hesab yarat' : 'Daxil ol'}</button></form><button className="switch" type="button" onClick={() => { setIsRegistering(value => !value); setMessage('') }}>{isRegistering ? 'Artıq hesabınız var? Daxil olun' : 'Hesabınız yoxdur? Qeydiyyatdan keçin'}</button></section></main>
+  return <main className="app-shell"><section className="auth-card" aria-labelledby="page-title"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən — Anılarınız, bizdən." /><p className="eyebrow">Host portal</p><h1 id="page-title">{isRegistering ? 'Hesab yaradın' : 'Xoş gördük'}</h1><p className="description">Tədbir xatirələrinizi idarə etmək üçün daxil olun.</p><form onSubmit={submit}>{isRegistering ? <label>Ad<input name="name" required maxLength={120} autoComplete="name" /></label> : null}<label>Email<input name="email" type="email" required maxLength={256} autoComplete="email" /></label><label>Şifrə<span className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} required minLength={isRegistering ? 8 : undefined} pattern={isRegistering ? '.*[0-9].*' : undefined} title={isRegistering ? 'Minimum 8 simvol və ən az 1 rəqəm daxil edin.' : undefined} autoComplete={isRegistering ? 'new-password' : 'current-password'} /><button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Şifrəni gizlət' : 'Şifrəni göstər'}>{showPassword ? 'Gizlət' : 'Göstər'}</button></span>{isRegistering ? <small>Minimum 8 simvol və ən az 1 rəqəm.</small> : null}</label>{message ? <p className="error" role="alert">{message}</p> : null}<button className="primary" disabled={isSubmitting}>{isSubmitting ? 'Gözləyin...' : isRegistering ? 'Hesab yarat' : 'Daxil ol'}</button></form><button className="switch" type="button" onClick={() => { setIsRegistering(value => !value); setMessage('') }}>{isRegistering ? 'Artıq hesabınız var? Daxil olun' : 'Hesabınız yoxdur? Qeydiyyatdan keçin'}</button></section></main>
 }
 
 function EventForm({ selected, onSaved, onCancel }: { selected: EventItem | null; onSaved: (event: EventItem) => void; onCancel: () => void }) {
