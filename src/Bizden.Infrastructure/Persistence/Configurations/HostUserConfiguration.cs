@@ -14,6 +14,7 @@ public sealed class HostUserConfiguration : IEntityTypeConfiguration<HostUser>
         builder.Property(user => user.Email).HasMaxLength(256).IsRequired();
         builder.Property(user => user.NormalizedEmail).HasMaxLength(256).IsRequired();
         builder.Property(user => user.PasswordHash).HasMaxLength(512);
+        builder.Property(user => user.EmailVerificationCodeHash).HasMaxLength(512);
         builder.HasIndex(user => user.NormalizedEmail).IsUnique();
     }
 }

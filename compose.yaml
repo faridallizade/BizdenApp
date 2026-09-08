@@ -40,6 +40,12 @@ services:
       R2__AccessKeyId: ${R2__AccessKeyId:-}
       R2__SecretAccessKey: ${R2__SecretAccessKey:-}
       Monitoring__MetricsApiKey: ${Monitoring__MetricsApiKey:-}
+      Smtp__Host: ${Smtp__Host:-}
+      Smtp__Port: ${Smtp__Port:-587}
+      Smtp__UserName: ${Smtp__UserName:-}
+      Smtp__Password: ${Smtp__Password:-}
+      Smtp__From: ${Smtp__From:-}
+      Smtp__EnableSsl: ${Smtp__EnableSsl:-true}
     volumes:
       - bizden_data_protection_keys:/root/.aspnet/DataProtection-Keys
     depends_on:

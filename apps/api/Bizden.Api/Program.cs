@@ -109,9 +109,23 @@ var auth = app.MapGroup("/api/host/auth").RequireRateLimiting("host-auth");
 auth.MapPost("/register", async (RegisterHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.RegisterAsync(new RegisterHostCommand(request.Name, request.Email, request.Password), cancellationToken);
+    if (result.RequiresEmailVerification && result.ErrorCode is not null) return AuthError(result.ErrorCode, StatusCodes.Status503ServiceUnavailable);
+    if (result.RequiresEmailVerification) return Results.Accepted($"/api/host/auth/verify-email", new { requiresEmailVerification = true });
     if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
     return Results.Created("/api/host/auth/me", new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+});
+auth.MapPost("/verify-email", async (VerifyHostEmailRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var result = await service.VerifyEmailAsync(new VerifyHostEmailCommand(request.Email, request.Code), cancellationToken);
+    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    await SignInAsync(context, result.User!);
+    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+});
+auth.MapPost("/resend-verification", async (ResendVerificationRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+{
+    var result = await service.ResendVerificationAsync(request.Email, cancellationToken);
+    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "VERIFICATION_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
 });
 auth.MapPost("/login", async (LoginHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
@@ -203,6 +217,8 @@ static Guid OwnerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(Clai
 
 public sealed record RegisterHostRequest(string Name, string Email, string Password);
 public sealed record LoginHostRequest(string Email, string Password);
+public sealed record VerifyHostEmailRequest(string Email, string Code);
+public sealed record ResendVerificationRequest(string Email);
 public sealed record HostSessionResponse(Guid Id, string Name, string Email);
 public sealed record CreateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status);
 public sealed record UpdateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status);

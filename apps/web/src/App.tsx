@@ -44,8 +44,38 @@ function newIdempotencyKey() {
 }
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
-  const [isRegistering, setIsRegistering] = useState(false); const [isSubmitting, setIsSubmitting] = useState(false); const [showPassword, setShowPassword] = useState(false); const [message, setMessage] = useState('')
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setIsSubmitting(true); setMessage(''); const body = isRegistering ? { name: form.get('name'), email: form.get('email'), password: form.get('password') } : { email: form.get('email'), password: form.get('password') }; try { onAuthenticated(await request<Session>(`/api/host/auth/${isRegistering ? 'register' : 'login'}`, { method: 'POST', body: JSON.stringify(body) })) } catch (error) { setMessage(error instanceof Error ? error.message : 'Giriş alınmadı.') } finally { setIsSubmitting(false) } }
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [verificationEmail, setVerificationEmail] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [message, setMessage] = useState('')
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    setIsSubmitting(true); setMessage('')
+    try {
+      if (verificationEmail) {
+        onAuthenticated(await request<Session>('/api/host/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: verificationEmail, code: form.get('code') }) }))
+        return
+      }
+      const email = String(form.get('email') ?? '')
+      const body = isRegistering ? { name: form.get('name'), email, password: form.get('password') } : { email, password: form.get('password') }
+      const result = await request<Session | { requiresEmailVerification: true }>(`/api/host/auth/${isRegistering ? 'register' : 'login'}`, { method: 'POST', body: JSON.stringify(body) })
+      if ('requiresEmailVerification' in result) { setVerificationEmail(email); return }
+      onAuthenticated(result)
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Giriş alınmadı.') } finally { setIsSubmitting(false) }
+  }
+
+  async function resend() {
+    setIsSubmitting(true); setMessage('')
+    try { await request('/api/host/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email: verificationEmail }) }); setMessage('Yeni kod göndərildi.') }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Kod yenidən göndərilə bilmədi.') }
+    finally { setIsSubmitting(false) }
+  }
+
+  if (verificationEmail) return <main className="app-shell"><section className="auth-card" aria-labelledby="page-title"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən — Anılarınız, bizdən." /><p className="eyebrow">Email təsdiqi</p><h1 id="page-title">Kodu daxil edin</h1><p className="description">{verificationEmail} ünvanına göndərilən 6 rəqəmli kodu yazın.</p><form onSubmit={submit}><label>Təsdiq kodu<input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required /></label>{message ? <p className="error" role="alert">{message}</p> : null}<button className="primary" disabled={isSubmitting}>{isSubmitting ? 'Gözləyin...' : 'Təsdiqlə'}</button></form><button className="switch" type="button" disabled={isSubmitting} onClick={() => void resend()}>Kodu yenidən göndər</button><button className="switch" type="button" onClick={() => { setVerificationEmail(''); setMessage('') }}>Başqa email istifadə et</button></section></main>
+
   return <main className="app-shell"><section className="auth-card" aria-labelledby="page-title"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən — Anılarınız, bizdən." /><p className="eyebrow">Host portal</p><h1 id="page-title">{isRegistering ? 'Hesab yaradın' : 'Xoş gördük'}</h1><p className="description">Tədbir xatirələrinizi idarə etmək üçün daxil olun.</p><form onSubmit={submit}>{isRegistering ? <label>Ad<input name="name" required maxLength={120} autoComplete="name" /></label> : null}<label>Email<input name="email" type="email" required maxLength={256} autoComplete="email" /></label><label>Şifrə<span className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} required minLength={isRegistering ? 8 : undefined} pattern={isRegistering ? '.*[0-9].*' : undefined} title={isRegistering ? 'Minimum 8 simvol və ən az 1 rəqəm daxil edin.' : undefined} autoComplete={isRegistering ? 'new-password' : 'current-password'} /><button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Şifrəni gizlət' : 'Şifrəni göstər'}>{showPassword ? 'Gizlət' : 'Göstər'}</button></span>{isRegistering ? <small>Minimum 8 simvol və ən az 1 rəqəm.</small> : null}</label>{message ? <p className="error" role="alert">{message}</p> : null}<button className="primary" disabled={isSubmitting}>{isSubmitting ? 'Gözləyin...' : isRegistering ? 'Hesab yarat' : 'Daxil ol'}</button></form><button className="switch" type="button" onClick={() => { setIsRegistering(value => !value); setMessage('') }}>{isRegistering ? 'Artıq hesabınız var? Daxil olun' : 'Hesabınız yoxdur? Qeydiyyatdan keçin'}</button></section></main>
 }
 
