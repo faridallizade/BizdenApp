@@ -1,0 +1,4 @@
+bizden.duckdns.org {
+    encode zstd gzip
+    reverse_proxy web:80
+}
