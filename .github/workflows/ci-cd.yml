@@ -1,0 +1,103 @@
+name: CI and VPS deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bizden-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore .NET dependencies
+        run: dotnet restore Bizden.slnx
+
+      - name: Build backend
+        run: dotnet build Bizden.slnx --configuration Release --no-restore
+
+      - name: Run backend tests
+        run: dotnet test Bizden.slnx --configuration Release --no-build
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: apps/web
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: apps/web
+        run: npm run build
+
+  deploy:
+    name: Deploy to VPS
+    needs: verify
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      vars.DEPLOY_ENABLED == 'true'
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+    steps:
+      - name: Configure SSH access
+        shell: bash
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Pull and start the new release
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" <<'REMOTE'
+            set -eu
+            cd /home/deploy/apps/bizden
+            git pull --ff-only origin main
+            docker compose up --build -d --remove-orphans
+
+            attempt=1
+            while [ "$attempt" -le 30 ]; do
+              if curl -fsS http://127.0.0.1:58081/health; then
+                exit 0
+              fi
+              attempt=$((attempt + 1))
+              sleep 2
+            done
+
+            echo 'Deployment health check failed.' >&2
+            docker compose ps
+            docker compose logs --tail=100 api web caddy
+            exit 1
+          REMOTE
