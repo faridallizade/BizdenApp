@@ -8,6 +8,8 @@ public interface IHostEventService
     Task<HostEventDetails?> GetAsync(Guid ownerId, Guid eventId, CancellationToken cancellationToken);
     Task<HostEventDetails> CreateAsync(Guid ownerId, CreateHostEventCommand command, CancellationToken cancellationToken);
     Task<HostEventDetails?> UpdateAsync(Guid ownerId, Guid eventId, UpdateHostEventCommand command, CancellationToken cancellationToken);
+    Task<CoverUpload?> CreateCoverUploadAsync(Guid ownerId, Guid eventId, string fileName, string mimeType, long fileSize, CancellationToken cancellationToken);
+    Task<HostEventDetails?> CompleteCoverUploadAsync(Guid ownerId, Guid eventId, string key, long fileSize, string mimeType, CancellationToken cancellationToken);
 }
 
 public sealed record CreateHostEventCommand(
@@ -17,7 +19,9 @@ public sealed record CreateHostEventCommand(
     string TimeZone,
     DateTimeOffset UploadStartAt,
     DateTimeOffset UploadEndAt,
-    EventStatus Status);
+    EventStatus Status,
+    string? BrandColor,
+    string? CustomMessage);
 
 public sealed record UpdateHostEventCommand(
     string Name,
@@ -26,9 +30,11 @@ public sealed record UpdateHostEventCommand(
     string TimeZone,
     DateTimeOffset UploadStartAt,
     DateTimeOffset UploadEndAt,
-    EventStatus Status);
+    EventStatus Status,
+    string? BrandColor,
+    string? CustomMessage);
 
-public sealed record HostEventSummary(Guid Id, string Name, DateTimeOffset EventDate, string TimeZone, EventStatus Status, int InvitationCount);
+public sealed record HostEventSummary(Guid Id, string Name, DateTimeOffset EventDate, string TimeZone, EventStatus Status, int InvitationCount, string? BrandColor, string? CustomMessage);
 
 public sealed record HostEventDetails(
     Guid Id,
@@ -41,4 +47,7 @@ public sealed record HostEventDetails(
     DateTimeOffset UploadStartAt,
     DateTimeOffset UploadEndAt,
     EventStatus Status,
-    int InvitationCount);
+    int InvitationCount,
+    string? BrandColor,
+    string? CustomMessage);
+public sealed record CoverUpload(string Key, string Url);

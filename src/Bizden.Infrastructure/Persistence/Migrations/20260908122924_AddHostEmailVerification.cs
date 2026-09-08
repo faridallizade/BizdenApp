@@ -35,6 +35,9 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                 table: "host_users",
                 type: "timestamp with time zone",
                 nullable: true);
+
+            // Accounts created before OTP verification were already active and must keep working.
+            migrationBuilder.Sql("UPDATE host_users SET \"EmailVerifiedAt\" = \"CreatedAt\" WHERE \"IsActive\" = TRUE AND \"EmailVerifiedAt\" IS NULL;");
         }
 
         /// <inheritdoc />

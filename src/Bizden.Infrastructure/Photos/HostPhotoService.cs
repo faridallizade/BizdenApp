@@ -4,6 +4,7 @@ using Bizden.Domain.Enums;
 using Bizden.Infrastructure.Persistence;
 using Bizden.Infrastructure.PublicAccess;
 using Microsoft.EntityFrameworkCore;
+using System.IO.Compression;
 
 namespace Bizden.Infrastructure.Photos;
 
@@ -33,6 +34,33 @@ public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage,
         if (photo is null) return null;
         var url = await storage.PresignGetAsync(photo.StorageKey, photo.MimeType, ct);
         return url is null ? null : new HostPhotoDownload(photo.OriginalFileName, photo.MimeType, url);
+    }
+
+    public async Task<HostPhotoExport?> CreateExportAsync(Guid ownerId, Guid eventId, CancellationToken ct)
+    {
+        var @event = await db.Events.AsNoTracking().SingleOrDefaultAsync(x => x.Id == eventId && x.OwnerId == ownerId, ct);
+        if (@event is null) return null;
+        var photos = await db.Photos.AsNoTracking().Where(x => x.EventId == eventId && x.Status == PhotoStatus.Uploaded && x.DeletedAt == null)
+            .OrderBy(x => x.UploadedAt).Take(500).Select(x => new { x.StorageKey, x.OriginalFileName }).ToListAsync(ct);
+        await using var output = new MemoryStream();
+        using (var zip = new ZipArchive(output, ZipArchiveMode.Create, true))
+        {
+            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var photo in photos)
+            {
+                var bytes = await storage.DownloadAsync(photo.StorageKey, ct);
+                if (bytes is null) continue;
+                var baseName = Path.GetFileName(photo.OriginalFileName);
+                var name = baseName; var suffix = 2;
+                while (!usedNames.Add(name)) name = $"{Path.GetFileNameWithoutExtension(baseName)}-{suffix++}{Path.GetExtension(baseName)}";
+                var entry = zip.CreateEntry(name, CompressionLevel.Fastest);
+                await using var entryStream = entry.Open();
+                await entryStream.WriteAsync(bytes, ct);
+            }
+        }
+        await audit.RecordAsync(ownerId, "Host", "PhotosExported", "Event", eventId, $"photoCount={photos.Count}", ct);
+        var safeName = string.Concat(@event.Name.Select(c => char.IsLetterOrDigit(c) ? c : '-')).Trim('-');
+        return new HostPhotoExport($"bizden-{(string.IsNullOrWhiteSpace(safeName) ? "photos" : safeName)}.zip", output.ToArray());
     }
 
     public async Task<bool> DeleteAsync(Guid ownerId, Guid photoId, CancellationToken ct)
