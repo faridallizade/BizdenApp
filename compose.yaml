@@ -33,7 +33,7 @@ services:
       dockerfile: deploy/docker/Dockerfile.api
     container_name: bizden-api
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-bizden_dev};Username=${POSTGRES_USER:-bizden};Password=${POSTGRES_PASSWORD:-bizden_local_password}
       R2__Endpoint: ${R2__Endpoint:-}
       R2__Bucket: ${R2__Bucket:-}
