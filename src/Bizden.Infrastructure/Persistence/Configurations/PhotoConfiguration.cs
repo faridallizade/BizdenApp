@@ -13,6 +13,9 @@ public sealed class PhotoConfiguration : IEntityTypeConfiguration<Photo>
         builder.Property(photo => photo.StorageKey).HasMaxLength(512).IsRequired();
         builder.Property(photo => photo.OriginalFileName).HasMaxLength(255).IsRequired();
         builder.Property(photo => photo.MimeType).HasMaxLength(127).IsRequired();
+        builder.Property(photo => photo.ThumbnailStorageKey).HasMaxLength(512);
+        builder.Property(photo => photo.PreviewStorageKey).HasMaxLength(512);
+        builder.Property(photo => photo.ProcessingError).HasMaxLength(256);
         builder.Property(photo => photo.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.HasIndex(photo => new { photo.EventId, photo.CreatedAt });
         builder.HasIndex(photo => new { photo.InvitationId, photo.CreatedAt });

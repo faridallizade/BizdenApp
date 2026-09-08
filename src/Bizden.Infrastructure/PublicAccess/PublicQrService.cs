@@ -4,11 +4,12 @@ using Bizden.Application.PublicAccess;
 using Bizden.Domain.Entities;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.Persistence;
+using Bizden.Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bizden.Infrastructure.PublicAccess;
 
-public sealed class PublicQrService(BizdenDbContext db, IObjectStorage storage) : IPublicQrService
+public sealed class PublicQrService(BizdenDbContext db, IObjectStorage storage, RuntimeMetrics metrics) : IPublicQrService
 {
     public async Task<PublicQrView> GetAsync(string token, CancellationToken ct)
     {
@@ -18,7 +19,7 @@ public sealed class PublicQrService(BizdenDbContext db, IObjectStorage storage) 
 
     public async Task<ReservationResult> ReserveAsync(string token, ReserveUploadCommand command, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(command.IdempotencyKey) || command.IdempotencyKey.Length > 128 || command.FileSize is < 1 or > 26_214_400 || string.IsNullOrWhiteSpace(command.FileName) || command.FileName.Length > 255 || command.MimeType is not ("image/jpeg" or "image/png" or "image/webp" or "image/heic")) return new("INVALID_REQUEST", null, null, 0);
+        if (string.IsNullOrWhiteSpace(command.IdempotencyKey) || command.IdempotencyKey.Length > 128 || command.FileSize is < 1 or > 26_214_400 || string.IsNullOrWhiteSpace(command.FileName) || command.FileName.Length > 255 || command.MimeType is not ("image/jpeg" or "image/png" or "image/webp")) return new("INVALID_REQUEST", null, null, 0);
         var invitation = await db.Invitations.AsNoTracking().Include(x => x.Event).SingleOrDefaultAsync(x => x.TokenHash == Hash(token), ct);
         if (invitation is null) return new("NOT_FOUND", null, null, 0);
         var view = View(invitation, DateTimeOffset.UtcNow);
@@ -50,7 +51,9 @@ public sealed class PublicQrService(BizdenDbContext db, IObjectStorage storage) 
         var invitation = await db.Invitations.AsNoTracking().SingleOrDefaultAsync(x => x.TokenHash == Hash(token), ct); if (invitation is null) return new("NOT_FOUND", null, null);
         var reservation = await db.UploadReservations.AsNoTracking().Include(x => x.Photo).SingleOrDefaultAsync(x => x.Id == reservationId && x.InvitationId == invitation.Id && x.Status == ReservationStatus.Reserved && x.ExpiresAt > DateTimeOffset.UtcNow, ct);
         if (reservation is null) return new("RESERVATION_UNAVAILABLE", null, null);
-        var url = await storage.PresignPutAsync(reservation.Photo.StorageKey, reservation.Photo.MimeType, ct); return url is null ? new("STORAGE_UNAVAILABLE", null, null) : new("READY", url, DateTimeOffset.UtcNow.AddMinutes(10));
+        var url = await storage.PresignPutAsync(reservation.Photo.StorageKey, reservation.Photo.MimeType, ct);
+        if (url is null) { metrics.RecordUploadFailed(); return new("STORAGE_UNAVAILABLE", null, null); }
+        return new("READY", url, DateTimeOffset.UtcNow.AddMinutes(10));
     }
 
     public async Task<ReservationResult> CompleteUploadAsync(string token, Guid reservationId, CancellationToken ct)
@@ -58,10 +61,10 @@ public sealed class PublicQrService(BizdenDbContext db, IObjectStorage storage) 
         var invitation = await db.Invitations.AsNoTracking().Include(x => x.Event).SingleOrDefaultAsync(x => x.TokenHash == Hash(token), ct); if (invitation is null) return new("NOT_FOUND", null, null, 0);
         var reservation = await db.UploadReservations.Include(x => x.Photo).SingleOrDefaultAsync(x => x.Id == reservationId && x.InvitationId == invitation.Id, ct);
         if (reservation is null || reservation.Status != ReservationStatus.Reserved) return new("RESERVATION_UNAVAILABLE", null, null, 0);
-        if (!await storage.VerifyAsync(reservation.Photo.StorageKey, reservation.Photo.FileSize, reservation.Photo.MimeType, ct)) return new("UPLOAD_NOT_VERIFIED", reservation.Id, reservation.ExpiresAt, 0);
+        if (!await storage.VerifyAsync(reservation.Photo.StorageKey, reservation.Photo.FileSize, reservation.Photo.MimeType, ct)) { metrics.RecordUploadFailed(); return new("UPLOAD_NOT_VERIFIED", reservation.Id, reservation.ExpiresAt, 0); }
         await using var tx = await db.Database.BeginTransactionAsync(ct); reservation.Status = ReservationStatus.Completed; reservation.CompletedAt = DateTimeOffset.UtcNow; reservation.Photo.Status = PhotoStatus.Uploaded; reservation.Photo.UploadedAt = DateTimeOffset.UtcNow;
         await db.Invitations.Where(x => x.Id == invitation.Id && x.ReservedUploads > 0).ExecuteUpdateAsync(x => x.SetProperty(y => y.ReservedUploads, y => y.ReservedUploads - 1).SetProperty(y => y.CompletedUploads, y => y.CompletedUploads + 1), ct);
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return new("COMPLETED", reservation.Id, null, Math.Max(0, invitation.UploadLimit - invitation.ReservedUploads - invitation.CompletedUploads));
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); metrics.RecordUploadCompleted(); return new("COMPLETED", reservation.Id, null, Math.Max(0, invitation.UploadLimit - invitation.ReservedUploads - invitation.CompletedUploads));
     }
 
     public async Task ExpireReservationsAsync(CancellationToken ct)
@@ -69,7 +72,7 @@ public sealed class PublicQrService(BizdenDbContext db, IObjectStorage storage) 
         var now = DateTimeOffset.UtcNow; var expired = await db.UploadReservations.Where(x => x.Status == ReservationStatus.Reserved && x.ExpiresAt <= now).ToListAsync(ct);
         if (expired.Count == 0) return; await using var tx = await db.Database.BeginTransactionAsync(ct);
         foreach (var group in expired.GroupBy(x => x.InvitationId)) { foreach (var item in group) item.Status = ReservationStatus.Expired; var count = group.Count(); await db.Invitations.Where(x => x.Id == group.Key).ExecuteUpdateAsync(x => x.SetProperty(y => y.ReservedUploads, y => y.ReservedUploads >= count ? y.ReservedUploads - count : 0), ct); }
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); metrics.RecordReservationExpiries(expired.Count);
     }
 
     private static PublicQrView View(Invitation i, DateTimeOffset now)

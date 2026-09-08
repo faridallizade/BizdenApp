@@ -17,8 +17,13 @@ public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage,
         if (invitationId is not null) query = query.Where(x => x.InvitationId == invitationId);
         var total = await query.CountAsync(ct);
         var rows = await query.OrderByDescending(x => x.UploadedAt).Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(x => new { x.Id, x.InvitationId, Label = x.Invitation.Label, x.OriginalFileName, x.MimeType, x.FileSize, x.UploadedAt, x.StorageKey }).ToListAsync(ct);
-        var items = await Task.WhenAll(rows.Select(async x => new HostPhotoItem(x.Id, x.InvitationId, x.Label, x.OriginalFileName, x.MimeType, x.FileSize, x.UploadedAt!.Value, await storage.PresignGetAsync(x.StorageKey, x.MimeType, ct))));
+            .Select(x => new { x.Id, x.InvitationId, Label = x.Invitation.Label, x.OriginalFileName, x.MimeType, x.FileSize, x.UploadedAt, x.ThumbnailStorageKey, x.PreviewStorageKey }).ToListAsync(ct);
+        var items = await Task.WhenAll(rows.Select(async x =>
+        {
+            var thumbnailUrl = x.ThumbnailStorageKey is null ? null : await storage.PresignGetAsync(x.ThumbnailStorageKey, "image/jpeg", ct);
+            var previewUrl = x.PreviewStorageKey is null ? null : await storage.PresignGetAsync(x.PreviewStorageKey, "image/jpeg", ct);
+            return new HostPhotoItem(x.Id, x.InvitationId, x.Label, x.OriginalFileName, x.MimeType, x.FileSize, x.UploadedAt!.Value, thumbnailUrl, previewUrl);
+        }));
         return new HostPhotoPage(items, page, pageSize, total);
     }
 
@@ -44,7 +49,12 @@ public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage,
     {
         var photos = await db.Photos.Where(x => x.Status == PhotoStatus.Deleted && x.StorageDeletedAt == null).OrderBy(x => x.DeletedAt).Take(50).ToListAsync(ct);
         foreach (var photo in photos)
-            if (await storage.DeleteAsync(photo.StorageKey, ct)) photo.StorageDeletedAt = DateTimeOffset.UtcNow;
+        {
+            var originalDeleted = await storage.DeleteAsync(photo.StorageKey, ct);
+            var previewDeleted = photo.PreviewStorageKey is null || await storage.DeleteAsync(photo.PreviewStorageKey, ct);
+            var thumbnailDeleted = photo.ThumbnailStorageKey is null || await storage.DeleteAsync(photo.ThumbnailStorageKey, ct);
+            if (originalDeleted && previewDeleted && thumbnailDeleted) photo.StorageDeletedAt = DateTimeOffset.UtcNow;
+        }
         if (photos.Count > 0) await db.SaveChangesAsync(ct);
     }
 }

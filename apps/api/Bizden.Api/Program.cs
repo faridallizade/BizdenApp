@@ -10,6 +10,7 @@ using Bizden.Application.Photos;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.DependencyInjection;
 using Bizden.Infrastructure.Persistence;
+using Bizden.Infrastructure.Observability;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -85,6 +86,7 @@ app.Use(async (context, next) =>
 app.Use(async (context, next) =>
 {
     var stopwatch = Stopwatch.StartNew(); await next();
+    context.RequestServices.GetRequiredService<RuntimeMetrics>().RecordRequest(context.Response.StatusCode);
     context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Bizden.RequestAudit")
         .LogInformation("HTTP request completed {Method} {StatusCode} in {ElapsedMilliseconds}ms", context.Request.Method, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
 });
@@ -94,6 +96,13 @@ app.MapGet("/", () => Results.Ok(new { service = "Bizdən API", status = "ready"
 app.MapHealthChecks("/health");
 app.MapGet("/health/ready", async (BizdenDbContext db, CancellationToken cancellationToken) =>
     await db.Database.CanConnectAsync(cancellationToken) ? Results.Ok(new { status = "ready" }) : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+var metricsApiKey = builder.Configuration["Monitoring:MetricsApiKey"];
+app.MapGet("/metrics", (HttpContext context, RuntimeMetrics metrics) =>
+{
+    if (string.IsNullOrWhiteSpace(metricsApiKey) || !string.Equals(context.Request.Headers["X-Metrics-Key"], metricsApiKey, StringComparison.Ordinal))
+        return Results.NotFound();
+    return Results.Text(metrics.ToPrometheusText(), "text/plain; version=0.0.4");
+});
 app.MapGet("/api/host/antiforgery", (IAntiforgery antiforgery, HttpContext context) => Results.Ok(new { token = antiforgery.GetAndStoreTokens(context).RequestToken }));
 
 var auth = app.MapGroup("/api/host/auth").RequireRateLimiting("host-auth");

@@ -18,6 +18,10 @@ public sealed class Photo
     public DateTimeOffset? UploadedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
     public DateTimeOffset? StorageDeletedAt { get; set; }
+    public string? ThumbnailStorageKey { get; set; }
+    public string? PreviewStorageKey { get; set; }
+    public DateTimeOffset? MediaProcessedAt { get; set; }
+    public string? ProcessingError { get; set; }
     public Event Event { get; set; } = null!;
     public Invitation Invitation { get; set; } = null!;
     public UploadReservation? UploadReservation { get; set; }

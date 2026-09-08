@@ -39,6 +39,7 @@ services:
       R2__Bucket: ${R2__Bucket:-}
       R2__AccessKeyId: ${R2__AccessKeyId:-}
       R2__SecretAccessKey: ${R2__SecretAccessKey:-}
+      Monitoring__MetricsApiKey: ${Monitoring__MetricsApiKey:-}
     volumes:
       - bizden_data_protection_keys:/root/.aspnet/DataProtection-Keys
     depends_on:

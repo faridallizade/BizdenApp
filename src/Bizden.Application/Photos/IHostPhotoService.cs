@@ -9,5 +9,5 @@ public interface IHostPhotoService
 }
 
 public sealed record HostPhotoPage(IReadOnlyList<HostPhotoItem> Items, int Page, int PageSize, int TotalCount);
-public sealed record HostPhotoItem(Guid Id, Guid InvitationId, string? InvitationLabel, string OriginalFileName, string MimeType, long FileSize, DateTimeOffset UploadedAt, string? PreviewUrl);
+public sealed record HostPhotoItem(Guid Id, Guid InvitationId, string? InvitationLabel, string OriginalFileName, string MimeType, long FileSize, DateTimeOffset UploadedAt, string? ThumbnailUrl, string? PreviewUrl);
 public sealed record HostPhotoDownload(string OriginalFileName, string MimeType, string Url);

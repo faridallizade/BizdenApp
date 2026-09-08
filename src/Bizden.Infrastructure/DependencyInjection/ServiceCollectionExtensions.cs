@@ -11,6 +11,7 @@ using Bizden.Infrastructure.Invitations;
 using Bizden.Infrastructure.PublicAccess;
 using Bizden.Infrastructure.Photos;
 using Bizden.Infrastructure.Persistence;
+using Bizden.Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,9 +32,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IInvitationManagementService, InvitationManagementService>();
         services.AddScoped<IPublicQrService, PublicQrService>();
         services.AddScoped<IHostPhotoService, HostPhotoService>();
+        services.AddSingleton<RuntimeMetrics>();
         services.AddSingleton<IObjectStorage, R2ObjectStorage>();
         services.AddHostedService<ReservationCleanupWorker>();
         services.AddHostedService<DeletedPhotoCleanupWorker>();
+        services.AddHostedService<PhotoProcessingWorker>();
 
         return services;
     }
