@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { toDataURL } from 'qrcode'
 import './App.css'
@@ -57,28 +57,59 @@ function QrManager({ event }: { event: EventItem }) {
 }
 
 type PublicQr = { state: string; eventName?: string; description?: string; eventDate?: string; timeZone?: string; remainingPhotos: number; uploadLimit?: number; uploadEndAt?: string }
+type GuestUpload = { id: string; file: File; reservationId?: string; progress: number; state: 'uploading' | 'failed' | 'completed'; attempts: number; error?: string }
+function putFile(url: string, file: File, onProgress: (progress: number) => void) {
+  return new Promise<void>((resolve, reject) => { const xhr = new XMLHttpRequest(); xhr.open('PUT', url); xhr.setRequestHeader('Content-Type', file.type); xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)) }; xhr.onerror = () => reject(new Error('NETWORK_ERROR')); xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`UPLOAD_${xhr.status}`)); xhr.send(file) })
+}
 function GuestScreen({ token }: { token: string }) {
-  const [data, setData] = useState<PublicQr | null>(null); const [message, setMessage] = useState(''); const [reserving, setReserving] = useState(false); const [held, setHeld] = useState(0)
+  const [data, setData] = useState<PublicQr | null>(null); const [message, setMessage] = useState(''); const [uploads, setUploads] = useState<GuestUpload[]>([])
+  const cameraInput = useRef<HTMLInputElement>(null); const galleryInput = useRef<HTMLInputElement>(null)
   const load = useCallback(async () => { try { setData(await request<PublicQr>(`/api/public/qr/${token}`)) } catch { setMessage('QR kod oxuna bilmədi.') } }, [token])
   useEffect(() => { void load() }, [load])
-  async function selectFiles(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const input = event.currentTarget.elements.namedItem('photos') as HTMLInputElement; const files = Array.from(input.files ?? []); if (!files.length) return; setReserving(true); setMessage('')
+  const updateUpload = useCallback((id: string, change: Partial<GuestUpload>) => setUploads(previous => previous.map(item => item.id === id ? { ...item, ...change } : item)), [])
+  const upload = useCallback(async function upload(item: GuestUpload) {
     try {
-      const results = await Promise.all(files.map(async file => {
-        const reserved = await request<{ state: string; reservationId?: string }>(`/api/public/qr/${token}/reservations`, { method: 'POST', body: JSON.stringify({ fileName: file.name, mimeType: file.type, fileSize: file.size, idempotencyKey: newIdempotencyKey() }) })
-        if (reserved.state !== 'RESERVED' || !reserved.reservationId) return reserved.state
-        const signed = await request<{ state: string; url?: string }>(`/api/public/qr/${token}/reservations/${reserved.reservationId}/upload-url`, { method: 'POST' })
-        if (signed.state !== 'READY' || !signed.url) return signed.state
-        const put = await fetch(signed.url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file }); if (!put.ok) return 'UPLOAD_FAILED'
-        return (await request<{ state: string }>(`/api/public/qr/${token}/reservations/${reserved.reservationId}/complete`, { method: 'POST' })).state
-      }))
-      const count = results.filter(item => item === 'COMPLETED').length; setHeld(previous => previous + count); setMessage(count === files.length ? `${count} foto uğurla yükləndi.` : `${count}/${files.length} foto yükləndi. R2 konfiqurasiyasını yoxlayın.`); await load()
-    } catch { setMessage('Yükləmə mümkün olmadı. İnterneti yoxlayıb yenidən cəhd edin.') } finally { setReserving(false) }
+      let reservationId = item.reservationId
+      if (!reservationId) {
+        const reserved = await request<{ state: string; reservationId?: string }>(`/api/public/qr/${token}/reservations`, { method: 'POST', body: JSON.stringify({ fileName: item.file.name, mimeType: item.file.type, fileSize: item.file.size, idempotencyKey: newIdempotencyKey() }) })
+        if (reserved.state !== 'RESERVED' || !reserved.reservationId) throw new Error(reserved.state)
+        reservationId = reserved.reservationId; item = { ...item, reservationId }; updateUpload(item.id, { reservationId })
+      }
+      const signed = await request<{ state: string; url?: string }>(`/api/public/qr/${token}/reservations/${reservationId}/upload-url`, { method: 'POST' })
+      if (signed.state !== 'READY' || !signed.url) throw new Error(signed.state)
+      await putFile(signed.url, item.file, progress => updateUpload(item.id, { progress }))
+      const completed = await request<{ state: string }>(`/api/public/qr/${token}/reservations/${reservationId}/complete`, { method: 'POST' })
+      if (completed.state !== 'COMPLETED') throw new Error(completed.state)
+      updateUpload(item.id, { state: 'completed', progress: 100, error: undefined }); await load()
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Yükləmə mümkün olmadı.'
+      if (reason === 'NETWORK_ERROR' && item.attempts < 1) { await upload({ ...item, attempts: item.attempts + 1 }); return }
+      updateUpload(item.id, { state: 'failed', error: reason })
+    }
+  }, [load, token, updateUpload])
+  async function addFiles(files: FileList | null) {
+    const chosen = Array.from(files ?? []); if (!chosen.length) return; setMessage('')
+    const pending = chosen.map(file => ({ id: newIdempotencyKey(), file, progress: 0, state: 'uploading' as const, attempts: 0 }))
+    setUploads(previous => [...pending, ...previous]); await Promise.all(pending.map(upload))
   }
+  async function retry(item: GuestUpload) { const next = { ...item, state: 'uploading' as const, error: undefined, attempts: item.attempts + 1 }; updateUpload(item.id, next); await upload(next) }
   if (!data) return <main className="guest-shell"><p className="muted">Yüklənir...</p></main>
   const copy: Record<string, string> = { NOT_FOUND: 'Bu QR kod tapılmadı.', INACTIVE: 'Bu QR kod deaktiv edilib.', EXPIRED: 'Bu QR kodun vaxtı bitib.', EVENT_UNAVAILABLE: 'Tədbir hazırda aktiv deyil.', NOT_OPEN: 'Foto yükləmə vaxtı hələ başlamayıb.', WINDOW_CLOSED: 'Foto yükləmə vaxtı bitib.', LIMIT_REACHED: 'Bu QR üçün foto limiti dolub.' }
   if (data.state !== 'READY') return <main className="guest-shell"><section className="guest-card"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən" /><p className="eyebrow">Bizdən</p><h1>{copy[data.state] ?? 'Bu dəvət əlçatan deyil.'}</h1></section></main>
-  return <main className="guest-shell"><section className="guest-card"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən" /><p className="eyebrow">Xatirələri paylaşın</p><h1>{data.eventName}</h1><p className="description">{data.description ?? 'Bu xüsusi günün anlarını bizimlə paylaşın.'}</p><div className="guest-limit"><strong>{data.remainingPhotos}</strong><span>foto haqqı qalıb</span></div><form onSubmit={selectFiles}><label className="file-picker">Foto seçin<input name="photos" type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple disabled={reserving} /></label><button className="primary" disabled={reserving}>{reserving ? 'Yüklənir...' : 'Fotoları yüklə'}</button></form>{held ? <p className="success">{held} foto uğurla yükləndi.</p> : null}{message ? <p className="error" role="alert">{message}</p> : null}</section></main>
+  const busy = uploads.some(item => item.state === 'uploading')
+  return <main className="guest-shell"><section className="guest-card"><img className="brand-logo" src="/brand/bizden-logo.png" alt="Bizdən" /><p className="eyebrow">Xatirələri paylaşın</p><h1>{data.eventName}</h1><p className="description">{data.description ?? 'Bu xüsusi günün anlarını bizimlə paylaşın.'}</p><div className="guest-limit"><strong>{data.remainingPhotos}</strong><span>foto haqqı qalıb</span></div><input ref={cameraInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" disabled={busy} onChange={event => { void addFiles(event.target.files); event.target.value = '' }} /><input ref={galleryInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple disabled={busy} onChange={event => { void addFiles(event.target.files); event.target.value = '' }} /><div className="guest-actions"><button className="primary" type="button" disabled={busy} onClick={() => cameraInput.current?.click()}>Foto çək</button><button className="secondary" type="button" disabled={busy} onClick={() => galleryInput.current?.click()}>Qalereyadan seç</button></div><div className="upload-list" aria-live="polite">{uploads.map(item => <article className="upload-item" key={item.id}><div><strong>{item.file.name}</strong><span>{item.state === 'completed' ? 'Yükləndi' : item.state === 'failed' ? 'Yükləmə alınmadı' : `${item.progress}% yüklənir`}</span></div><div className="progress-track"><span style={{ width: `${item.progress}%` }} /></div>{item.state === 'failed' ? <><p className="error">{item.error === 'NETWORK_ERROR' ? 'Bağlantı kəsildi.' : 'Yükləmə tamamlanmadı.'}</p><button className="text-button" type="button" onClick={() => void retry(item)}>Yenidən cəhd et</button></> : null}</article>)}</div>{message ? <p className="error" role="alert">{message}</p> : null}</section></main>
+}
+
+type HostPhoto = { id: string; invitationId: string; invitationLabel?: string; originalFileName: string; mimeType: string; fileSize: number; uploadedAt: string; previewUrl?: string }
+type PhotoPage = { items: HostPhoto[]; page: number; pageSize: number; totalCount: number }
+function GalleryManager({ event }: { event: EventItem }) {
+  const [page, setPage] = useState<PhotoPage | null>(null); const [filter, setFilter] = useState(''); const [invitations, setInvitations] = useState<Invitation[]>([]); const [selected, setSelected] = useState<HostPhoto | null>(null); const [message, setMessage] = useState(''); const [loading, setLoading] = useState(true)
+  const load = useCallback(async (targetPage = 1) => { setLoading(true); try { const query = new URLSearchParams({ page: String(targetPage), pageSize: '24' }); if (filter) query.set('invitationId', filter); const [photos, qrItems] = await Promise.all([request<PhotoPage>(`/api/host/events/${event.id}/photos?${query}`), request<Invitation[]>(`/api/host/events/${event.id}/invitations`)]); setPage(photos); setInvitations(qrItems); } catch (error) { setMessage(error instanceof Error ? error.message : 'Fotolar yüklənmədi.') } finally { setLoading(false) } }, [event.id, filter])
+  useEffect(() => { void load() }, [load])
+  async function download(photo: HostPhoto) { try { const item = await request<{ url: string }>(`/api/host/photos/${photo.id}/download`); window.open(item.url, '_blank', 'noopener,noreferrer') } catch { setMessage('Foto endirmə linki yaradıla bilmədi.') } }
+  async function remove(photo: HostPhoto) { if (!window.confirm(`“${photo.originalFileName}” silinsin? Bu əməliyyat geri qaytarılmır.`)) return; try { await request(`/api/host/photos/${photo.id}`, { method: 'DELETE' }); setSelected(null); await load(page?.page ?? 1) } catch { setMessage('Foto silinə bilmədi.') } }
+  const totalPages = page ? Math.max(1, Math.ceil(page.totalCount / page.pageSize)) : 1
+  return <section className="panel gallery-panel"><div className="panel-heading"><div><p className="eyebrow">Phase 10</p><h2>Foto qalereyası</h2><p className="muted">{page?.totalCount ?? 0} foto</p></div><label className="gallery-filter">QR filtri<select value={filter} onChange={e => { setFilter(e.target.value); setSelected(null) }}><option value="">Bütün QR-lər</option>{invitations.map(item => <option key={item.id} value={item.id}>{item.label ?? 'Adsız QR'}</option>)}</select></label></div>{message ? <p className="error" role="alert">{message}</p> : null}{loading ? <p className="muted">Fotolar yüklənir...</p> : null}{!loading && !page?.items.length ? <p className="muted empty">Bu filtr üzrə foto yoxdur.</p> : null}<div className="photo-grid">{page?.items.map(photo => <article className="photo-card" key={photo.id}><button className="photo-preview" type="button" onClick={() => setSelected(photo)}>{photo.previewUrl ? <img src={photo.previewUrl} alt={`${photo.originalFileName} önizləmə`} /> : <span>Önizləmə hazır deyil</span>}</button><div><strong title={photo.originalFileName}>{photo.originalFileName}</strong><span>{photo.invitationLabel ?? 'Adsız QR'} · {formatDate(photo.uploadedAt)}</span><div className="photo-actions"><button className="text-button" onClick={() => void download(photo)}>Endir</button><button className="danger-button" onClick={() => void remove(photo)}>Sil</button></div></div></article>)}</div>{page && page.totalCount > page.pageSize ? <div className="pagination"><button className="text-button" disabled={page.page <= 1} onClick={() => void load(page.page - 1)}>← Əvvəlki</button><span>{page.page} / {totalPages}</span><button className="text-button" disabled={page.page >= totalPages} onClick={() => void load(page.page + 1)}>Növbəti →</button></div> : null}{selected ? <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}><section className="photo-modal" role="dialog" aria-modal="true" aria-label={selected.originalFileName} onClick={e => e.stopPropagation()}>{selected.previewUrl ? <img src={selected.previewUrl} alt={selected.originalFileName} /> : null}<div><strong>{selected.originalFileName}</strong><div className="photo-actions"><button className="text-button" onClick={() => void download(selected)}>Orijinalı endir</button><button className="danger-button" onClick={() => void remove(selected)}>Sil</button><button className="text-button" onClick={() => setSelected(null)}>Bağla</button></div></div></section></div> : null}</section>
 }
 
 function Dashboard({ session, onLogout }: { session: Session; onLogout: () => void }) {
@@ -87,7 +118,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => { void load() }, [load])
   function saved(event: EventItem) { setEvents(previous => { const index = previous.findIndex(item => item.id === event.id); return index === -1 ? [event, ...previous] : previous.map(item => item.id === event.id ? event : item) }); setSelectedId(event.id) }
   async function logout() { await request('/api/host/auth/logout', { method: 'POST' }); onLogout() }
-  return <main className="dashboard-shell"><header className="dashboard-header"><img className="header-logo" src="/brand/bizden-logo.png" alt="Bizdən" /><div><strong>{session.name}</strong><span>{session.email}</span></div><button className="text-button" onClick={() => void logout()}>Çıxış</button></header><div className="dashboard-grid"><aside className="event-list panel"><div className="panel-heading"><div><p className="eyebrow">Tədbirlər</p><h2>Dashboard</h2></div><button className="text-button" onClick={() => setSelectedId(null)}>+ Yeni</button></div>{loading ? <p className="muted">Yüklənir...</p> : null}{message ? <p className="error">{message}</p> : null}{events.map(item => <button className={`event-row ${item.id === selectedId ? 'selected' : ''}`} key={item.id} onClick={() => setSelectedId(item.id)}><strong>{item.name}</strong><span>{formatDate(item.eventDate)} · {item.status}</span><small>{item.invitationCount} QR kod</small></button>)}{!loading && !events.length ? <p className="muted empty">İlk tədbirinizi yaradın.</p> : null}</aside><div className="workspace"><EventForm key={selected?.id ?? 'new'} selected={selected} onSaved={saved} onCancel={() => setSelectedId(null)} />{selected ? <QrManager key={selected.id} event={selected} /> : null}</div></div></main>
+  return <main className="dashboard-shell"><header className="dashboard-header"><img className="header-logo" src="/brand/bizden-logo.png" alt="Bizdən" /><div><strong>{session.name}</strong><span>{session.email}</span></div><button className="text-button" onClick={() => void logout()}>Çıxış</button></header><div className="dashboard-grid"><aside className="event-list panel"><div className="panel-heading"><div><p className="eyebrow">Tədbirlər</p><h2>Dashboard</h2></div><button className="text-button" onClick={() => setSelectedId(null)}>+ Yeni</button></div>{loading ? <p className="muted">Yüklənir...</p> : null}{message ? <p className="error">{message}</p> : null}{events.map(item => <button className={`event-row ${item.id === selectedId ? 'selected' : ''}`} key={item.id} onClick={() => setSelectedId(item.id)}><strong>{item.name}</strong><span>{formatDate(item.eventDate)} · {item.status}</span><small>{item.invitationCount} QR kod</small></button>)}{!loading && !events.length ? <p className="muted empty">İlk tədbirinizi yaradın.</p> : null}</aside><div className="workspace"><EventForm key={selected?.id ?? 'new'} selected={selected} onSaved={saved} onCancel={() => setSelectedId(null)} />{selected ? <><QrManager key={selected.id} event={selected} /><GalleryManager key={`gallery-${selected.id}`} event={selected} /></> : null}</div></div></main>
 }
 
 function HostApp() {

@@ -5,6 +5,7 @@ using Bizden.Application.Authentication;
 using Bizden.Application.Events;
 using Bizden.Application.Invitations;
 using Bizden.Application.PublicAccess;
+using Bizden.Application.Photos;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.DependencyInjection;
 using Microsoft.AspNetCore.Authentication;
@@ -114,6 +115,14 @@ events.MapPatch("/{eventId:guid}/invitations/{invitationId:guid}", async (Guid e
 });
 events.MapPost("/{eventId:guid}/invitations/{invitationId:guid}/regenerate", async (Guid eventId, Guid invitationId, ClaimsPrincipal user, IInvitationManagementService service, CancellationToken cancellationToken) =>
     await service.RegenerateAsync(OwnerId(user), eventId, invitationId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
+events.MapGet("/{eventId:guid}/photos", async (Guid eventId, Guid? invitationId, int? page, int? pageSize, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
+    await service.ListAsync(OwnerId(user), eventId, invitationId, page ?? 1, pageSize ?? 24, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
+
+var photos = app.MapGroup("/api/host/photos").RequireAuthorization();
+photos.MapGet("/{photoId:guid}/download", async (Guid photoId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
+    await service.GetDownloadAsync(OwnerId(user), photoId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
+photos.MapDelete("/{photoId:guid}", async (Guid photoId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
+    await service.DeleteAsync(OwnerId(user), photoId, cancellationToken) ? Results.NoContent() : Results.NotFound());
 
 var publicQr = app.MapGroup("/api/public/qr");
 publicQr.MapGet("/{token}", async (string token, IPublicQrService service, CancellationToken cancellationToken) => Results.Ok(await service.GetAsync(token, cancellationToken)));

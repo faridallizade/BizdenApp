@@ -2,10 +2,12 @@ using Bizden.Application.Authentication;
 using Bizden.Application.Events;
 using Bizden.Application.Invitations;
 using Bizden.Application.PublicAccess;
+using Bizden.Application.Photos;
 using Bizden.Infrastructure.Authentication;
 using Bizden.Infrastructure.Events;
 using Bizden.Infrastructure.Invitations;
 using Bizden.Infrastructure.PublicAccess;
+using Bizden.Infrastructure.Photos;
 using Bizden.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -25,8 +27,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHostEventService, HostEventService>();
         services.AddScoped<IInvitationManagementService, InvitationManagementService>();
         services.AddScoped<IPublicQrService, PublicQrService>();
+        services.AddScoped<IHostPhotoService, HostPhotoService>();
         services.AddSingleton<IObjectStorage, R2ObjectStorage>();
         services.AddHostedService<ReservationCleanupWorker>();
+        services.AddHostedService<DeletedPhotoCleanupWorker>();
 
         return services;
     }

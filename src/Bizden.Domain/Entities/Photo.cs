@@ -17,6 +17,7 @@ public sealed class Photo
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UploadedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
+    public DateTimeOffset? StorageDeletedAt { get; set; }
     public Event Event { get; set; } = null!;
     public Invitation Invitation { get; set; } = null!;
     public UploadReservation? UploadReservation { get; set; }
