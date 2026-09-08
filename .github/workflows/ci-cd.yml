@@ -87,17 +87,23 @@ jobs:
             git pull --ff-only origin main
             docker compose up --build -d --remove-orphans
 
+            healthy=0
             attempt=1
             while [ "$attempt" -le 30 ]; do
-              if curl -fsS http://127.0.0.1:58081/health; then
-                exit 0
+              if curl -fsS http://127.0.0.1:58081/health >/dev/null 2>&1; then
+                healthy=1
+                break
               fi
               attempt=$((attempt + 1))
               sleep 2
             done
 
-            echo 'Deployment health check failed.' >&2
-            docker compose ps
-            docker compose logs --tail=100 api web caddy
-            exit 1
+            if [ "$healthy" -ne 1 ]; then
+              echo 'Deployment health check failed.' >&2
+              docker compose ps
+              docker compose logs --tail=100 api web caddy
+              exit 1
+            fi
+
+            echo 'Deployment health check passed.'
           REMOTE
