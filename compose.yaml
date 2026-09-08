@@ -51,7 +51,7 @@ services:
       dockerfile: deploy/docker/Dockerfile.web
     container_name: bizden-web
     ports:
-      - "${WEB_PORT:-58081}:80"
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-58081}:80"
     depends_on:
       api:
         condition: service_started
