@@ -16,9 +16,16 @@ public sealed class PhotoProcessingWorker(IServiceScopeFactory scopes, ILogger<P
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await ProcessAsync(stoppingToken);
+        await TryProcessAsync(stoppingToken);
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        while (await timer.WaitForNextTickAsync(stoppingToken)) await ProcessAsync(stoppingToken);
+        while (await timer.WaitForNextTickAsync(stoppingToken)) await TryProcessAsync(stoppingToken);
+    }
+
+    private async Task TryProcessAsync(CancellationToken ct)
+    {
+        try { await ProcessAsync(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception exception) { logger.LogError(exception, "Photo processing cycle failed; it will retry without stopping the API."); }
     }
 
     private async Task ProcessAsync(CancellationToken ct)

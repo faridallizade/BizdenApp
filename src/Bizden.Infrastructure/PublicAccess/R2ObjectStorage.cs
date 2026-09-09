@@ -38,16 +38,18 @@ public sealed class R2ObjectStorage : IObjectStorage
             var bytes = new byte[32]; var read = await result.ResponseStream.ReadAsync(bytes, ct);
             return HasMatchingImageSignature(bytes.AsSpan(0, read), contentType);
         }
-        catch (AmazonS3Exception) { metrics.RecordR2Failure(); return false; }
+        catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return false; }
     }
     public async Task<bool> DeleteAsync(string key, CancellationToken ct)
     {
         if (client is null || bucket is null) return false;
         try { await client.DeleteObjectAsync(bucket, key, ct); return true; }
-        catch (AmazonS3Exception) { metrics.RecordR2Failure(); return false; }
+        catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return false; }
     }
-    public async Task<byte[]?> DownloadAsync(string key, CancellationToken ct) { if (client is null || bucket is null) return null; try { using var result = await client.GetObjectAsync(bucket, key, ct); using var stream = new MemoryStream(); await result.ResponseStream.CopyToAsync(stream, ct); return stream.ToArray(); } catch (AmazonS3Exception) { metrics.RecordR2Failure(); return null; } }
-    public async Task<bool> UploadAsync(string key, string contentType, byte[] content, CancellationToken ct) { if (client is null || bucket is null) return false; try { using var input = new MemoryStream(content); await client.PutObjectAsync(new PutObjectRequest { BucketName = bucket, Key = key, InputStream = input, ContentType = contentType }, ct); return true; } catch (AmazonS3Exception) { metrics.RecordR2Failure(); return false; } }
+    public async Task<byte[]?> DownloadAsync(string key, CancellationToken ct) { if (client is null || bucket is null) return null; try { using var result = await client.GetObjectAsync(bucket, key, ct); using var stream = new MemoryStream(); await result.ResponseStream.CopyToAsync(stream, ct); return stream.ToArray(); } catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return null; } }
+    public async Task<bool> UploadAsync(string key, string contentType, byte[] content, CancellationToken ct) { if (client is null || bucket is null) return false; try { using var input = new MemoryStream(content); await client.PutObjectAsync(new PutObjectRequest { BucketName = bucket, Key = key, InputStream = input, ContentType = contentType }, ct); return true; } catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return false; } }
+
+    private static bool IsTransientStorageFailure(Exception exception) => exception is AmazonS3Exception or HttpRequestException or System.Net.Sockets.SocketException or IOException;
 
     private static bool HasMatchingImageSignature(ReadOnlySpan<byte> bytes, string contentType) => contentType switch
     {
