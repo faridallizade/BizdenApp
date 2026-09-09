@@ -23,7 +23,9 @@ public sealed class R2ObjectStorage : IObjectStorage
         this.metrics = metrics;
         var endpoint = config["R2:Endpoint"]; bucket = config["R2:Bucket"]; var accessKey = config["R2:AccessKeyId"]; var secret = config["R2:SecretAccessKey"];
         AWSConfigsS3.UseSignatureVersion4 = true;
-        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(bucket) && !string.IsNullOrWhiteSpace(accessKey) && !string.IsNullOrWhiteSpace(secret)) client = new AmazonS3Client(accessKey, secret, new AmazonS3Config { ServiceURL = endpoint, ForcePathStyle = true, AuthenticationRegion = "auto" });
+        // Cloudflare R2 is S3-compatible but does not implement AWS S3 Express session auth.
+        // Without this switch recent AWS SDK versions may attempt an extra unsupported auth flow.
+        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(bucket) && !string.IsNullOrWhiteSpace(accessKey) && !string.IsNullOrWhiteSpace(secret)) client = new AmazonS3Client(accessKey, secret, new AmazonS3Config { ServiceURL = endpoint, ForcePathStyle = true, AuthenticationRegion = "auto", DisableS3ExpressSessionAuth = true });
     }
     public Task<string?> PresignPutAsync(string key, string contentType, CancellationToken ct) => client is null || bucket is null ? Task.FromResult<string?>(null) : Task.FromResult<string?>(client.GetPreSignedURL(new GetPreSignedUrlRequest { BucketName = bucket, Key = key, Verb = HttpVerb.PUT, ContentType = contentType, Expires = DateTime.UtcNow.AddMinutes(10) }));
     public Task<string?> PresignGetAsync(string key, string contentType, CancellationToken ct) => client is null || bucket is null ? Task.FromResult<string?>(null) : Task.FromResult<string?>(client.GetPreSignedURL(new GetPreSignedUrlRequest { BucketName = bucket, Key = key, Verb = HttpVerb.GET, Expires = DateTime.UtcNow.AddMinutes(10), ResponseHeaderOverrides = { ContentType = contentType } }));
