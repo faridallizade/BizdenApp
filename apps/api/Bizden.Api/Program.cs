@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using Bizden.Application.Authentication;
 using Bizden.Application.Events;
 using Bizden.Application.Invitations;
+using Bizden.Application.Galleries;
 using Bizden.Application.PublicAccess;
 using Bizden.Application.Photos;
 using Bizden.Domain.Enums;
@@ -64,6 +65,12 @@ builder.Services.AddRateLimiter(options =>
         var token = context.Request.RouteValues["token"]?.ToString() ?? "unknown";
         return RateLimitPartition.GetFixedWindowLimiter($"{ip}:{token}", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
     });
+    options.AddPolicy("public-gallery", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var gallery = context.Request.RouteValues["publicId"]?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter($"{ip}:{gallery}", _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+    });
 });
 
 var app = builder.Build();
@@ -109,9 +116,23 @@ var auth = app.MapGroup("/api/host/auth").RequireRateLimiting("host-auth");
 auth.MapPost("/register", async (RegisterHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.RegisterAsync(new RegisterHostCommand(request.Name, request.Email, request.Password), cancellationToken);
+    if (result.RequiresEmailVerification && result.ErrorCode is not null) return AuthError(result.ErrorCode, StatusCodes.Status503ServiceUnavailable);
+    if (result.RequiresEmailVerification) return Results.Accepted($"/api/host/auth/verify-email", new { requiresEmailVerification = true });
     if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
     return Results.Created("/api/host/auth/me", new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+});
+auth.MapPost("/verify-email", async (VerifyHostEmailRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var result = await service.VerifyEmailAsync(new VerifyHostEmailCommand(request.Email, request.Code), cancellationToken);
+    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    await SignInAsync(context, result.User!);
+    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+});
+auth.MapPost("/resend-verification", async (ResendVerificationRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+{
+    var result = await service.ResendVerificationAsync(request.Email, cancellationToken);
+    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "VERIFICATION_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
 });
 auth.MapPost("/login", async (LoginHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
@@ -131,7 +152,7 @@ events.MapPost("/", async (CreateEventRequest request, ClaimsPrincipal user, IHo
 {
     try
     {
-        var result = await service.CreateAsync(OwnerId(user), new CreateHostEventCommand(request.Name, request.Description, request.EventDate, request.TimeZone, request.UploadStartAt, request.UploadEndAt, request.Status), cancellationToken);
+        var result = await service.CreateAsync(OwnerId(user), new CreateHostEventCommand(request.Name, request.Description, request.EventDate, request.TimeZone, request.UploadStartAt, request.UploadEndAt, request.Status, request.BrandColor, request.CustomMessage), cancellationToken);
         return Results.Created($"/api/host/events/{result.Id}", result);
     }
     catch (ArgumentException exception) { return ValidationError(exception.Message); }
@@ -142,9 +163,19 @@ events.MapPut("/{eventId:guid}", async (Guid eventId, UpdateEventRequest request
 {
     try
     {
-        var result = await service.UpdateAsync(OwnerId(user), eventId, new UpdateHostEventCommand(request.Name, request.Description, request.EventDate, request.TimeZone, request.UploadStartAt, request.UploadEndAt, request.Status), cancellationToken);
+        var result = await service.UpdateAsync(OwnerId(user), eventId, new UpdateHostEventCommand(request.Name, request.Description, request.EventDate, request.TimeZone, request.UploadStartAt, request.UploadEndAt, request.Status, request.BrandColor, request.CustomMessage), cancellationToken);
         return result is null ? Results.NotFound() : Results.Ok(result);
     }
+    catch (ArgumentException exception) { return ValidationError(exception.Message); }
+});
+events.MapPost("/{eventId:guid}/cover/upload-url", async (Guid eventId, CoverUploadRequest request, ClaimsPrincipal user, IHostEventService service, CancellationToken cancellationToken) =>
+{
+    try { return await service.CreateCoverUploadAsync(OwnerId(user), eventId, request.FileName, request.MimeType, request.FileSize, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound(); }
+    catch (ArgumentException exception) { return ValidationError(exception.Message); }
+});
+events.MapPost("/{eventId:guid}/cover/complete", async (Guid eventId, CoverCompleteRequest request, ClaimsPrincipal user, IHostEventService service, CancellationToken cancellationToken) =>
+{
+    try { return await service.CompleteCoverUploadAsync(OwnerId(user), eventId, request.Key, request.FileSize, request.MimeType, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound(); }
     catch (ArgumentException exception) { return ValidationError(exception.Message); }
 });
 
@@ -172,6 +203,17 @@ events.MapPost("/{eventId:guid}/invitations/{invitationId:guid}/regenerate", asy
     await service.RegenerateAsync(OwnerId(user), eventId, invitationId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
 events.MapGet("/{eventId:guid}/photos", async (Guid eventId, Guid? invitationId, int? page, int? pageSize, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
     await service.ListAsync(OwnerId(user), eventId, invitationId, page ?? 1, pageSize ?? 24, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
+events.MapGet("/{eventId:guid}/photos/export", async (Guid eventId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
+    await service.CreateExportAsync(OwnerId(user), eventId, cancellationToken) is { } result ? Results.File(result.Content, "application/zip", result.FileName) : Results.NotFound());
+events.MapGet("/{eventId:guid}/gallery-share", async (Guid eventId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+    await service.GetAsync(OwnerId(user), eventId, cancellationToken) is { } result ? Results.Ok(result) : Results.NoContent());
+events.MapPost("/{eventId:guid}/gallery-share", async (Guid eventId, GalleryShareRequest request, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+{
+    try { return await service.EnableAsync(OwnerId(user), eventId, request.Pin, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound(); }
+    catch (ArgumentException exception) { return ValidationError(exception.Message); }
+});
+events.MapDelete("/{eventId:guid}/gallery-share", async (Guid eventId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+    await service.DisableAsync(OwnerId(user), eventId, cancellationToken) ? Results.NoContent() : Results.NotFound());
 
 var photos = app.MapGroup("/api/host/photos").RequireAuthorization();
 photos.MapGet("/{photoId:guid}/download", async (Guid photoId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
@@ -186,6 +228,11 @@ publicQr.MapPost("/{token}/reservations", async (string token, ReserveUploadRequ
 publicQr.MapPost("/{token}/reservations/{reservationId:guid}/upload-url", async (string token, Guid reservationId, IPublicQrService service, CancellationToken cancellationToken) => Results.Ok(await service.PrepareUploadAsync(token, reservationId, cancellationToken)));
 publicQr.MapPost("/{token}/reservations/{reservationId:guid}/complete", async (string token, Guid reservationId, IPublicQrService service, CancellationToken cancellationToken) => Results.Ok(await service.CompleteUploadAsync(token, reservationId, cancellationToken)));
 publicQr.MapPost("/{token}/reservations/{reservationId:guid}/cancel", async (string token, Guid reservationId, IPublicQrService service, CancellationToken cancellationToken) => { await service.CancelAsync(token, reservationId, cancellationToken); return Results.NoContent(); });
+var publicGallery = app.MapGroup("/api/public/galleries").RequireRateLimiting("public-gallery");
+publicGallery.MapGet("/{publicId:guid}", async (Guid publicId, IPublicGalleryService service, CancellationToken cancellationToken) =>
+    await service.GetInfoAsync(publicId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
+publicGallery.MapPost("/{publicId:guid}/unlock", async (Guid publicId, GalleryUnlockRequest request, IPublicGalleryService service, CancellationToken cancellationToken) =>
+    await service.UnlockAsync(publicId, request.Pin, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
 
 app.Run();
 
@@ -203,10 +250,16 @@ static Guid OwnerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(Clai
 
 public sealed record RegisterHostRequest(string Name, string Email, string Password);
 public sealed record LoginHostRequest(string Email, string Password);
+public sealed record VerifyHostEmailRequest(string Email, string Code);
+public sealed record ResendVerificationRequest(string Email);
 public sealed record HostSessionResponse(Guid Id, string Name, string Email);
-public sealed record CreateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status);
-public sealed record UpdateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status);
+public sealed record CreateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status, string? BrandColor, string? CustomMessage);
+public sealed record UpdateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status, string? BrandColor, string? CustomMessage);
 public sealed record CreateInvitationRequest(string? Label, int UploadLimit, DateTimeOffset? ExpiresAt, int Count = 1);
 public sealed record UpdateInvitationRequest(string? Label, int UploadLimit, DateTimeOffset? ExpiresAt, bool IsActive);
+public sealed record GalleryShareRequest(string Pin);
+public sealed record GalleryUnlockRequest(string Pin);
+public sealed record CoverUploadRequest(string FileName, string MimeType, long FileSize);
+public sealed record CoverCompleteRequest(string Key, string MimeType, long FileSize);
 public sealed record ReserveUploadRequest(string FileName, string MimeType, long FileSize, string IdempotencyKey);
 public partial class Program;

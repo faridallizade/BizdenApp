@@ -3,6 +3,7 @@ using System;
 using Bizden.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Bizden.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BizdenDbContext))]
-    partial class BizdenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908122924_AddHostEmailVerification")]
+    partial class AddHostEmailVerification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -71,10 +74,6 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("BrandColor")
-                        .HasMaxLength(7)
-                        .HasColumnType("character varying(7)");
-
                     b.Property<string>("CoverImageKey")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
@@ -82,23 +81,12 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("CustomMessage")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
                     b.Property<DateTimeOffset>("EventDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("GalleryEnabledAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("GalleryPinHash")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("Name")
                         .IsRequired()

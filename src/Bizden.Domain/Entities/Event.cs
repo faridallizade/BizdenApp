@@ -11,6 +11,10 @@ public sealed class Event
     public string Slug { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? CoverImageKey { get; set; }
+    public string? BrandColor { get; set; }
+    public string? CustomMessage { get; set; }
+    public string? GalleryPinHash { get; set; }
+    public DateTimeOffset? GalleryEnabledAt { get; set; }
     public DateTimeOffset EventDate { get; set; }
     public string TimeZone { get; set; } = "Asia/Baku";
     public DateTimeOffset UploadStartAt { get; set; }

@@ -1,0 +1,9 @@
+{
+  "name": "Bizdən — Anılarınız, bizdən.",
+  "short_name": "Bizdən",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f4ee",
+  "theme_color": "#805742",
+  "icons": [{ "src": "/brand/bizden-logo.png", "type": "image/png" }]
+}

@@ -14,6 +14,9 @@ public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.Property(@event => @event.Slug).HasMaxLength(180).IsRequired();
         builder.Property(@event => @event.Description).HasMaxLength(2_000);
         builder.Property(@event => @event.CoverImageKey).HasMaxLength(512);
+        builder.Property(@event => @event.BrandColor).HasMaxLength(7);
+        builder.Property(@event => @event.CustomMessage).HasMaxLength(500);
+        builder.Property(@event => @event.GalleryPinHash).HasMaxLength(512);
         builder.Property(@event => @event.TimeZone).HasMaxLength(64).IsRequired();
         builder.Property(@event => @event.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.HasIndex(@event => @event.PublicId).IsUnique();
