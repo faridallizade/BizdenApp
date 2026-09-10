@@ -11,5 +11,5 @@ public interface IHostGalleryService
     Task<bool> DisableAsync(Guid ownerId, Guid eventId, CancellationToken cancellationToken);
 }
 
-public sealed record CreateGalleryShareCommand(Guid EventId, string Name, string Pin, IReadOnlyCollection<Guid> PhotoIds);
+public sealed record CreateGalleryShareCommand(Guid EventId, string Name, string Pin, IReadOnlyCollection<Guid> PhotoIds, bool AllMatching = false, Guid? InvitationId = null);
 public sealed record HostGalleryShare(Guid Id, Guid PublicId, string Name, DateTimeOffset EnabledAt, int PhotoCount);
