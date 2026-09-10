@@ -3,6 +3,7 @@ using System;
 using Bizden.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Bizden.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BizdenDbContext))]
-    partial class BizdenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260910110708_AddMultiGallerySharing")]
+    partial class AddMultiGallerySharing
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -86,9 +89,6 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -160,13 +160,6 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTimeOffset?>("BlockedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("BlockedReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -199,9 +192,6 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsAdmin")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
@@ -386,58 +376,6 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Bizden.Domain.Entities.PhotoExportJob", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.Property<Guid>("EventId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FileName")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("RequestedById")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("StartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("StorageKey")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EventId", "Status")
-                        .IsUnique()
-                        .HasFilter("\"Status\" IN ('Queued', 'Processing')");
-
-                    b.HasIndex("Status", "CreatedAt");
-
-                    b.ToTable("photo_export_jobs", (string)null);
-                });
-
             modelBuilder.Entity("Bizden.Domain.Entities.SharedGallery", b =>
                 {
                     b.Property<Guid>("Id")
@@ -576,17 +514,6 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                     b.Navigation("Event");
 
                     b.Navigation("Invitation");
-                });
-
-            modelBuilder.Entity("Bizden.Domain.Entities.PhotoExportJob", b =>
-                {
-                    b.HasOne("Bizden.Domain.Entities.Event", "Event")
-                        .WithMany()
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Bizden.Domain.Entities.SharedGallery", b =>

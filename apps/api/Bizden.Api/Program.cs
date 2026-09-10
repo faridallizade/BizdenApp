@@ -8,6 +8,7 @@ using Bizden.Application.Invitations;
 using Bizden.Application.Galleries;
 using Bizden.Application.PublicAccess;
 using Bizden.Application.Photos;
+using Bizden.Application.Administration;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.DependencyInjection;
 using Bizden.Infrastructure.Persistence;
@@ -36,7 +37,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options => options.AddPolicy("admin", policy => policy.RequireRole("Admin")));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -120,30 +121,64 @@ auth.MapPost("/register", async (RegisterHostRequest request, IHostAuthenticatio
     if (result.RequiresEmailVerification) return Results.Accepted($"/api/host/auth/verify-email", new { requiresEmailVerification = true });
     if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
-    return Results.Created("/api/host/auth/me", new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+    return Results.Created("/api/host/auth/me", new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 });
 auth.MapPost("/verify-email", async (VerifyHostEmailRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.VerifyEmailAsync(new VerifyHostEmailCommand(request.Email, request.Code), cancellationToken);
     if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
-    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 });
 auth.MapPost("/resend-verification", async (ResendVerificationRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
 {
     var result = await service.ResendVerificationAsync(request.Email, cancellationToken);
     return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "VERIFICATION_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
 });
+auth.MapPost("/password-reset/request", async (PasswordResetRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+{
+    var result = await service.RequestPasswordResetAsync(request.Email, cancellationToken);
+    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "RESET_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
+});
+auth.MapPost("/password-reset/confirm", async (PasswordResetConfirmRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+{
+    var result = await service.ResetPasswordAsync(new ResetPasswordCommand(request.Email, request.Code, request.Password), cancellationToken);
+    return result.Succeeded ? Results.NoContent() : AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+});
 auth.MapPost("/login", async (LoginHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.AuthenticateAsync(new LoginHostCommand(request.Email, request.Password), cancellationToken);
     if (!result.Succeeded) return AuthError("INVALID_CREDENTIALS", StatusCodes.Status401Unauthorized);
     await SignInAsync(context, result.User!);
-    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email));
+    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 });
 auth.MapPost("/logout", async (HttpContext context) => { await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return Results.NoContent(); }).RequireAuthorization();
 auth.MapGet("/me", (ClaimsPrincipal user) => Results.Ok(new HostSessionResponse(
-    Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!), user.FindFirstValue(ClaimTypes.Name)!, user.FindFirstValue(ClaimTypes.Email)!))).RequireAuthorization();
+    Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!), user.FindFirstValue(ClaimTypes.Name)!, user.FindFirstValue(ClaimTypes.Email)!, user.IsInRole("Admin")))).RequireAuthorization();
+auth.MapPut("/profile", async (UpdateHostProfileRequest request, ClaimsPrincipal principal, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var result = await service.UpdateProfileAsync(OwnerId(principal), new UpdateHostProfileCommand(request.Name), cancellationToken);
+    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    await SignInAsync(context, result.User!);
+    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
+}).RequireAuthorization();
+auth.MapPost("/email-change/request", async (EmailChangeRequest request, ClaimsPrincipal principal, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var result = await service.RequestEmailChangeAsync(OwnerId(principal), request.Email, cancellationToken);
+    if (result.Succeeded)
+    {
+        await SignInAsync(context, result.User!);
+        return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
+    }
+    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "EMAIL_CHANGE_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
+}).RequireAuthorization();
+auth.MapPost("/email-change/confirm", async (EmailChangeConfirmRequest request, ClaimsPrincipal principal, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var result = await service.ConfirmEmailChangeAsync(OwnerId(principal), request.Code, cancellationToken);
+    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    await SignInAsync(context, result.User!);
+    return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
+}).RequireAuthorization();
 
 var events = app.MapGroup("/api/host/events").RequireAuthorization();
 events.MapGet("/", async (ClaimsPrincipal user, IHostEventService service, CancellationToken cancellationToken) =>
@@ -203,8 +238,10 @@ events.MapPost("/{eventId:guid}/invitations/{invitationId:guid}/regenerate", asy
     await service.RegenerateAsync(OwnerId(user), eventId, invitationId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
 events.MapGet("/{eventId:guid}/photos", async (Guid eventId, Guid? invitationId, int? page, int? pageSize, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
     await service.ListAsync(OwnerId(user), eventId, invitationId, page ?? 1, pageSize ?? 24, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
-events.MapGet("/{eventId:guid}/photos/export", async (Guid eventId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
-    await service.CreateExportAsync(OwnerId(user), eventId, cancellationToken) is { } result ? Results.File(result.Content, "application/zip", result.FileName) : Results.NotFound());
+events.MapPost("/{eventId:guid}/photos/export", async (Guid eventId, ClaimsPrincipal user, IPhotoExportService service, CancellationToken cancellationToken) =>
+    await service.QueueAsync(OwnerId(user), eventId, cancellationToken) is { } result ? Results.Accepted($"/api/host/events/{eventId}/photos/export/{result.Id}", result) : Results.NotFound());
+events.MapGet("/{eventId:guid}/photos/exports", async (Guid eventId, ClaimsPrincipal user, IPhotoExportService service, CancellationToken cancellationToken) =>
+    await service.ListAsync(OwnerId(user), eventId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
 events.MapGet("/{eventId:guid}/gallery-share", async (Guid eventId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
     await service.GetAsync(OwnerId(user), eventId, cancellationToken) is { } result ? Results.Ok(result) : Results.NoContent());
 events.MapPost("/{eventId:guid}/gallery-share", async (Guid eventId, GalleryShareRequest request, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
@@ -214,6 +251,24 @@ events.MapPost("/{eventId:guid}/gallery-share", async (Guid eventId, GalleryShar
 });
 events.MapDelete("/{eventId:guid}/gallery-share", async (Guid eventId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
     await service.DisableAsync(OwnerId(user), eventId, cancellationToken) ? Results.NoContent() : Results.NotFound());
+events.MapGet("/{eventId:guid}/galleries", async (Guid eventId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.ListAsync(OwnerId(user), eventId, cancellationToken)));
+events.MapPost("/{eventId:guid}/galleries", async (Guid eventId, CreateGalleryRequest request, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await service.CreateAsync(OwnerId(user), new CreateGalleryShareCommand(eventId, request.Name, request.Pin, request.PhotoIds), cancellationToken);
+        return result is null ? Results.NotFound() : Results.Created($"/api/host/events/{eventId}/galleries/{result.Id}", result);
+    }
+    catch (ArgumentException exception) { return ValidationError(exception.Message); }
+});
+events.MapPut("/{eventId:guid}/galleries/{galleryId:guid}/photos", async (Guid eventId, Guid galleryId, ReplaceGalleryPhotosRequest request, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+{
+    try { return await service.ReplacePhotosAsync(OwnerId(user), eventId, galleryId, request.PhotoIds, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound(); }
+    catch (ArgumentException exception) { return ValidationError(exception.Message); }
+});
+events.MapDelete("/{eventId:guid}/galleries/{galleryId:guid}", async (Guid eventId, Guid galleryId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+    await service.DeleteAsync(OwnerId(user), eventId, galleryId, cancellationToken) ? Results.NoContent() : Results.NotFound());
 
 var photos = app.MapGroup("/api/host/photos").RequireAuthorization();
 photos.MapGet("/{photoId:guid}/download", async (Guid photoId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
@@ -234,12 +289,23 @@ publicGallery.MapGet("/{publicId:guid}", async (Guid publicId, IPublicGallerySer
 publicGallery.MapPost("/{publicId:guid}/unlock", async (Guid publicId, GalleryUnlockRequest request, IPublicGalleryService service, CancellationToken cancellationToken) =>
     await service.UnlockAsync(publicId, request.Pin, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
 
+var admin = app.MapGroup("/api/admin").RequireAuthorization("admin");
+admin.MapGet("/dashboard", async (IAdminService service, CancellationToken cancellationToken) => Results.Ok(await service.GetDashboardAsync(cancellationToken)));
+admin.MapGet("/hosts", async (int? page, int? pageSize, IAdminService service, CancellationToken cancellationToken) => Results.Ok(await service.ListHostsAsync(page ?? 1, pageSize ?? 25, cancellationToken)));
+admin.MapPatch("/hosts/{hostId:guid}", async (Guid hostId, UpdateAdminHostRequest request, IAdminService service, CancellationToken cancellationToken) =>
+    await service.UpdateHostAsync(hostId, new UpdateAdminHostCommand(request.IsActive, request.IsBlocked, request.BlockedReason), cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
+admin.MapGet("/events", async (int? page, int? pageSize, IAdminService service, CancellationToken cancellationToken) => Results.Ok(await service.ListEventsAsync(page ?? 1, pageSize ?? 25, cancellationToken)));
+admin.MapDelete("/events/{eventId:guid}", async (Guid eventId, IAdminService service, CancellationToken cancellationToken) =>
+    await service.SoftDeleteEventAsync(eventId, cancellationToken) ? Results.NoContent() : Results.NotFound());
+admin.MapGet("/audit", async (int? page, int? pageSize, IAdminService service, CancellationToken cancellationToken) => Results.Ok(await service.ListAuditAsync(page ?? 1, pageSize ?? 50, cancellationToken)));
+
 app.Run();
 
 static Task SignInAsync(HttpContext context, Bizden.Domain.Entities.HostUser user)
 {
     var identity = new ClaimsIdentity([
-        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Name, user.Name), new Claim(ClaimTypes.Email, user.Email)
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Name, user.Name), new Claim(ClaimTypes.Email, user.Email),
+        new Claim(ClaimTypes.Role, user.IsAdmin ? "Admin" : "Host")
     ], CookieAuthenticationDefaults.AuthenticationScheme);
     return context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 }
@@ -252,13 +318,21 @@ public sealed record RegisterHostRequest(string Name, string Email, string Passw
 public sealed record LoginHostRequest(string Email, string Password);
 public sealed record VerifyHostEmailRequest(string Email, string Code);
 public sealed record ResendVerificationRequest(string Email);
-public sealed record HostSessionResponse(Guid Id, string Name, string Email);
+public sealed record PasswordResetRequest(string Email);
+public sealed record PasswordResetConfirmRequest(string Email, string Code, string Password);
+public sealed record UpdateHostProfileRequest(string Name);
+public sealed record EmailChangeRequest(string Email);
+public sealed record EmailChangeConfirmRequest(string Code);
+public sealed record HostSessionResponse(Guid Id, string Name, string Email, bool IsAdmin);
 public sealed record CreateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status, string? BrandColor, string? CustomMessage);
 public sealed record UpdateEventRequest(string Name, string? Description, DateTimeOffset EventDate, string TimeZone, DateTimeOffset UploadStartAt, DateTimeOffset UploadEndAt, EventStatus Status, string? BrandColor, string? CustomMessage);
 public sealed record CreateInvitationRequest(string? Label, int UploadLimit, DateTimeOffset? ExpiresAt, int Count = 1);
 public sealed record UpdateInvitationRequest(string? Label, int UploadLimit, DateTimeOffset? ExpiresAt, bool IsActive);
 public sealed record GalleryShareRequest(string Pin);
 public sealed record GalleryUnlockRequest(string Pin);
+public sealed record CreateGalleryRequest(string Name, string Pin, IReadOnlyCollection<Guid> PhotoIds);
+public sealed record ReplaceGalleryPhotosRequest(IReadOnlyCollection<Guid> PhotoIds);
+public sealed record UpdateAdminHostRequest(bool IsActive, bool IsBlocked, string? BlockedReason);
 public sealed record CoverUploadRequest(string FileName, string MimeType, long FileSize);
 public sealed record CoverCompleteRequest(string Key, string MimeType, long FileSize);
 public sealed record ReserveUploadRequest(string FileName, string MimeType, long FileSize, string IdempotencyKey);

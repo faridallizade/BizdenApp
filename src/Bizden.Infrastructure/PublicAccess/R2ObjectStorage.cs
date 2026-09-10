@@ -14,6 +14,7 @@ public interface IObjectStorage
     Task<bool> DeleteAsync(string key, CancellationToken ct);
     Task<byte[]?> DownloadAsync(string key, CancellationToken ct);
     Task<bool> UploadAsync(string key, string contentType, byte[] content, CancellationToken ct);
+    Task<bool> UploadAsync(string key, string contentType, Stream content, CancellationToken ct);
 }
 public sealed class R2ObjectStorage : IObjectStorage
 {
@@ -50,6 +51,7 @@ public sealed class R2ObjectStorage : IObjectStorage
     }
     public async Task<byte[]?> DownloadAsync(string key, CancellationToken ct) { if (client is null || bucket is null) return null; try { using var result = await client.GetObjectAsync(bucket, key, ct); using var stream = new MemoryStream(); await result.ResponseStream.CopyToAsync(stream, ct); return stream.ToArray(); } catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return null; } }
     public async Task<bool> UploadAsync(string key, string contentType, byte[] content, CancellationToken ct) { if (client is null || bucket is null) return false; try { using var input = new MemoryStream(content); await client.PutObjectAsync(new PutObjectRequest { BucketName = bucket, Key = key, InputStream = input, ContentType = contentType }, ct); return true; } catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return false; } }
+    public async Task<bool> UploadAsync(string key, string contentType, Stream content, CancellationToken ct) { if (client is null || bucket is null) return false; try { await client.PutObjectAsync(new PutObjectRequest { BucketName = bucket, Key = key, InputStream = content, ContentType = contentType }, ct); return true; } catch (Exception exception) when (IsTransientStorageFailure(exception)) { metrics.RecordR2Failure(); return false; } }
 
     private static bool IsTransientStorageFailure(Exception exception) => exception is AmazonS3Exception or HttpRequestException or System.Net.Sockets.SocketException or IOException;
 
