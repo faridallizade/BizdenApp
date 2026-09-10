@@ -7,6 +7,7 @@ import { ProfileScreen } from './components/ProfileScreen'
 import { GalleryManager } from './components/GalleryManager'
 import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { AdminScreen } from './components/AdminScreen'
+import { HostNavigation } from './components/HostNavigation'
 import './App.css'
 
 // Nginx proxies /api to the API container. Keeping requests same-origin means
@@ -202,7 +203,7 @@ function HostApp() {
   if (!checked) return <main className="app-shell"><p className="muted">Yüklənir...</p></main>
   if (session && window.location.pathname === '/profile') return <ProfileScreen session={session} onSessionChanged={setSession} onBack={() => { window.location.assign('/') }} />
   if (session && window.location.pathname === '/admin') return <AdminScreen session={session} onBack={() => { window.location.assign('/') }} />
-  return session ? <Dashboard session={session} onLogout={() => setSession(null)} /> : <AuthScreen onAuthenticated={setSession} />
+  return session ? <><HostNavigation session={session} /><Dashboard session={session} onLogout={() => setSession(null)} /></> : <AuthScreen onAuthenticated={setSession} />
 }
 
 export default function App() {
