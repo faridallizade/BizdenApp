@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { toDataURL } from 'qrcode'
+import { downloadBrandedQrPdf } from './lib/qrPdf'
+import { AuthScreen, type Session } from './components/AuthScreen'
+import { ProfileScreen } from './components/ProfileScreen'
+import { GalleryManager } from './components/GalleryManager'
+import { LanguageSwitcher } from './components/LanguageSwitcher'
+import { AdminScreen } from './components/AdminScreen'
 import './App.css'
 
 // Nginx proxies /api to the API container. Keeping requests same-origin means
 // the app also works from a phone or another computer, not only localhost.
 const apiBaseUrl = ''
 const blankEvent = () => ({ name: '', description: '', eventDate: '', timeZone: 'Asia/Baku', uploadStartAt: '', uploadEndAt: '', status: 'Draft', brandColor: '#805742', customMessage: '' })
-type Session = { id: string; name: string; email: string }
 type EventItem = { id: string; name: string; description?: string; eventDate: string; timeZone: string; uploadStartAt: string; uploadEndAt: string; status: 'Draft' | 'Active' | 'Completed' | 'Archived'; invitationCount: number; brandColor?: string; customMessage?: string }
 type Invitation = { id: string; label?: string; uploadLimit: number; reservedUploads: number; completedUploads: number; isActive: boolean; expiresAt?: string; createdAt: string }
 type InvitationToken = { invitation: Invitation; token: string }
@@ -43,7 +48,7 @@ function newIdempotencyKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
 }
 
-function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
+export function LegacyAuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
   const [isRegistering, setIsRegistering] = useState(false)
   const [verificationEmail, setVerificationEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -85,12 +90,13 @@ function EventForm({ selected, onSaved, onCancel }: { selected: EventItem | null
   return <section className="panel event-form"><div className="panel-heading"><div><p className="eyebrow">Tədbir</p><h2>{selected ? 'Tədbiri redaktə et' : 'Yeni tədbir'}</h2></div>{selected ? <button className="text-button" onClick={onCancel}>Yeni tədbirə keç</button> : null}</div><form onSubmit={submit}><label>Tədbirin adı<input name="name" defaultValue={value.name} required maxLength={160} /></label><label>Açıqlama<textarea name="description" defaultValue={value.description} maxLength={2000} rows={3} /></label><div className="form-grid"><label>Tədbir vaxtı<input name="eventDate" type="datetime-local" defaultValue={toInputDate(value.eventDate)} required /></label><label>Timezone<input name="timeZone" defaultValue={value.timeZone} required maxLength={64} /></label><label>Upload başlanğıcı<input name="uploadStartAt" type="datetime-local" defaultValue={toInputDate(value.uploadStartAt)} required /></label><label>Upload sonu<input name="uploadEndAt" type="datetime-local" defaultValue={toInputDate(value.uploadEndAt)} required /></label></div><div className="form-grid"><label>Brend rəngi<input name="brandColor" type="color" defaultValue={value.brandColor || '#805742'} /></label><label>Qonaqlar üçün mesaj<textarea name="customMessage" defaultValue={value.customMessage} maxLength={500} rows={2} placeholder="Xatirələrinizi bizimlə paylaşın." /></label></div><label>Cover şəkli (JPEG, PNG, WEBP; max 10 MB)<input name="cover" type="file" accept="image/jpeg,image/png,image/webp" /></label><label>Status<select name="status" defaultValue={value.status}><option value="Draft">Qaralama</option><option value="Active">Aktiv</option><option value="Completed">Tamamlanıb</option><option value="Archived">Arxivlənib</option></select></label>{message ? <p className="error" role="alert">{message}</p> : null}<button className="primary" disabled={saving}>{saving ? 'Yadda saxlanır...' : selected ? 'Dəyişiklikləri saxla' : 'Tədbir yarat'}</button></form></section>
 }
 
-function QrPreview({ item }: { item: InvitationToken }) {
+function QrPreview({ item, event }: { item: InvitationToken; event?: EventItem }) {
   const [source, setSource] = useState('')
   const link = `${window.location.origin}/q/${item.token}`
   useEffect(() => { void toDataURL(link, { width: 360, margin: 2, color: { dark: '#4e3b2f', light: '#fffdfa' } }).then(setSource) }, [link])
   function download() { if (!source) return; const anchor = document.createElement('a'); anchor.href = source; anchor.download = `bizden-${item.invitation.label ?? 'qr'}.png`; anchor.click() }
-  return <article className="qr-preview"><img src={source} alt={`${item.invitation.label ?? 'Bizdən'} QR kodu`} /><div><strong>{item.invitation.label ?? 'Yeni QR'}</strong><code>{link}</code><button className="text-button" type="button" onClick={download} disabled={!source}>PNG endir</button></div></article>
+  function downloadPdf() { if (!source) return; downloadBrandedQrPdf({ eventName: event?.name ?? 'Bizdən tədbiri', eventDate: event?.eventDate ?? new Date().toISOString(), label: item.invitation.label, uploadLimit: item.invitation.uploadLimit, source, link, brandColor: event?.brandColor }) }
+  return <article className="qr-preview"><img src={source} alt={`${item.invitation.label ?? 'Bizdən'} QR kodu`} /><div><strong>{item.invitation.label ?? 'Yeni QR'}</strong><code>{link}</code><button className="text-button" type="button" onClick={download} disabled={!source}>PNG endir</button><button className="text-button" type="button" onClick={downloadPdf} disabled={!source}>Brendli PDF endir</button></div></article>
 }
 
 function QrManager({ event }: { event: EventItem }) {
@@ -170,7 +176,7 @@ function PublicGalleryScreen({ publicId }: { publicId: string }) {
 
 type HostPhoto = { id: string; invitationId: string; invitationLabel?: string; originalFileName: string; mimeType: string; fileSize: number; uploadedAt: string; thumbnailUrl?: string; previewUrl?: string }
 type PhotoPage = { items: HostPhoto[]; page: number; pageSize: number; totalCount: number }
-function GalleryManager({ event }: { event: EventItem }) {
+export function LegacyGalleryManager({ event }: { event: EventItem }) {
   const [page, setPage] = useState<PhotoPage | null>(null); const [filter, setFilter] = useState(''); const [invitations, setInvitations] = useState<Invitation[]>([]); const [selected, setSelected] = useState<HostPhoto | null>(null); const [message, setMessage] = useState(''); const [loading, setLoading] = useState(true)
   const load = useCallback(async (targetPage = 1) => { setLoading(true); try { const query = new URLSearchParams({ page: String(targetPage), pageSize: '24' }); if (filter) query.set('invitationId', filter); const [photos, qrItems] = await Promise.all([request<PhotoPage>(`/api/host/events/${event.id}/photos?${query}`), request<Invitation[]>(`/api/host/events/${event.id}/invitations`)]); setPage(photos); setInvitations(qrItems); } catch (error) { setMessage(error instanceof Error ? error.message : 'Fotolar yüklənmədi.') } finally { setLoading(false) } }, [event.id, filter])
   useEffect(() => { void load() }, [load])
@@ -194,11 +200,13 @@ function HostApp() {
   const [session, setSession] = useState<Session | null>(null); const [checked, setChecked] = useState(false)
   useEffect(() => { void request<Session>('/api/host/auth/me').then(setSession).catch(() => null).finally(() => setChecked(true)) }, [])
   if (!checked) return <main className="app-shell"><p className="muted">Yüklənir...</p></main>
+  if (session && window.location.pathname === '/profile') return <ProfileScreen session={session} onSessionChanged={setSession} onBack={() => { window.location.assign('/') }} />
+  if (session && window.location.pathname === '/admin') return <AdminScreen session={session} onBack={() => { window.location.assign('/') }} />
   return session ? <Dashboard session={session} onLogout={() => setSession(null)} /> : <AuthScreen onAuthenticated={setSession} />
 }
 
 export default function App() {
   const token = window.location.pathname.match(/^\/q\/([^/]+)$/)?.[1]
   const publicId = window.location.pathname.match(/^\/g\/([0-9a-f-]{36})$/i)?.[1]
-  return token ? <GuestScreen token={token} /> : publicId ? <PublicGalleryScreen publicId={publicId} /> : <HostApp />
+  return <>{token ? <GuestScreen token={token} /> : publicId ? <PublicGalleryScreen publicId={publicId} /> : <HostApp />}<LanguageSwitcher /></>
 }

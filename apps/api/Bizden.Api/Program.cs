@@ -170,7 +170,7 @@ auth.MapPost("/email-change/request", async (EmailChangeRequest request, ClaimsP
         await SignInAsync(context, result.User!);
         return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
     }
-    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "EMAIL_CHANGE_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
+    return result.ErrorCode is null ? Results.Accepted("/api/host/auth/email-change/confirm", new { requiresEmailVerification = true }) : AuthError(result.ErrorCode, result.ErrorCode == "EMAIL_CHANGE_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
 }).RequireAuthorization();
 auth.MapPost("/email-change/confirm", async (EmailChangeConfirmRequest request, ClaimsPrincipal principal, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
@@ -257,7 +257,7 @@ events.MapPost("/{eventId:guid}/galleries", async (Guid eventId, CreateGalleryRe
 {
     try
     {
-        var result = await service.CreateAsync(OwnerId(user), new CreateGalleryShareCommand(eventId, request.Name, request.Pin, request.PhotoIds), cancellationToken);
+        var result = await service.CreateAsync(OwnerId(user), new CreateGalleryShareCommand(eventId, request.Name, request.Pin, request.PhotoIds, request.AllMatching, request.InvitationId), cancellationToken);
         return result is null ? Results.NotFound() : Results.Created($"/api/host/events/{eventId}/galleries/{result.Id}", result);
     }
     catch (ArgumentException exception) { return ValidationError(exception.Message); }
@@ -275,6 +275,8 @@ photos.MapGet("/{photoId:guid}/download", async (Guid photoId, ClaimsPrincipal u
     await service.GetDownloadAsync(OwnerId(user), photoId, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound());
 photos.MapDelete("/{photoId:guid}", async (Guid photoId, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
     await service.DeleteAsync(OwnerId(user), photoId, cancellationToken) ? Results.NoContent() : Results.NotFound());
+photos.MapPost("/bulk-delete", async (BulkDeletePhotosRequest request, ClaimsPrincipal user, IHostPhotoService service, CancellationToken cancellationToken) =>
+    await service.DeleteManyAsync(OwnerId(user), request.EventId, request.PhotoIds, request.InvitationId, request.AllMatching, cancellationToken) is { } count ? Results.Ok(new { count }) : Results.NotFound());
 
 var publicQr = app.MapGroup("/api/public/qr").RequireRateLimiting("public-qr");
 publicQr.MapGet("/{token}", async (string token, IPublicQrService service, CancellationToken cancellationToken) => Results.Ok(await service.GetAsync(token, cancellationToken)));
@@ -330,8 +332,9 @@ public sealed record CreateInvitationRequest(string? Label, int UploadLimit, Dat
 public sealed record UpdateInvitationRequest(string? Label, int UploadLimit, DateTimeOffset? ExpiresAt, bool IsActive);
 public sealed record GalleryShareRequest(string Pin);
 public sealed record GalleryUnlockRequest(string Pin);
-public sealed record CreateGalleryRequest(string Name, string Pin, IReadOnlyCollection<Guid> PhotoIds);
+public sealed record CreateGalleryRequest(string Name, string Pin, IReadOnlyCollection<Guid> PhotoIds, bool AllMatching = false, Guid? InvitationId = null);
 public sealed record ReplaceGalleryPhotosRequest(IReadOnlyCollection<Guid> PhotoIds);
+public sealed record BulkDeletePhotosRequest(Guid EventId, IReadOnlyCollection<Guid> PhotoIds, Guid? InvitationId, bool AllMatching = false);
 public sealed record UpdateAdminHostRequest(bool IsActive, bool IsBlocked, string? BlockedReason);
 public sealed record CoverUploadRequest(string FileName, string MimeType, long FileSize);
 public sealed record CoverCompleteRequest(string Key, string MimeType, long FileSize);

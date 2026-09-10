@@ -73,6 +73,28 @@ public sealed class HostPhotoService(BizdenDbContext db, IObjectStorage storage,
         return true;
     }
 
+    public async Task<int?> DeleteManyAsync(Guid ownerId, Guid eventId, IReadOnlyCollection<Guid> photoIds, Guid? invitationId, bool allMatching, CancellationToken ct)
+    {
+        if (!await db.Events.AsNoTracking().AnyAsync(@event => @event.Id == eventId && @event.OwnerId == ownerId, ct)) return null;
+        var query = db.Photos.Where(photo => photo.EventId == eventId && photo.Status == PhotoStatus.Uploaded && photo.DeletedAt == null);
+        if (invitationId is not null) query = query.Where(photo => photo.InvitationId == invitationId);
+        if (!allMatching)
+        {
+            var ids = photoIds.Distinct().ToList();
+            if (ids.Count == 0) return 0;
+            query = query.Where(photo => ids.Contains(photo.Id));
+        }
+        var photos = await query.ToListAsync(ct);
+        var now = DateTimeOffset.UtcNow;
+        foreach (var photo in photos) { photo.Status = PhotoStatus.Deleted; photo.DeletedAt = now; }
+        if (photos.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            await audit.RecordAsync(ownerId, "Host", "PhotosDeleted", "Event", eventId, $"count={photos.Count};allMatching={allMatching}", ct);
+        }
+        return photos.Count;
+    }
+
     public async Task DeleteStoredObjectsAsync(CancellationToken ct)
     {
         var photos = await db.Photos.Where(x => x.Status == PhotoStatus.Deleted && x.StorageDeletedAt == null).OrderBy(x => x.DeletedAt).Take(50).ToListAsync(ct);

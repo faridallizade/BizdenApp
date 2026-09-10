@@ -26,8 +26,8 @@ public sealed class GalleryService(BizdenDbContext db, IObjectStorage storage) :
         if (string.IsNullOrWhiteSpace(name) || name.Length > 120) throw new ArgumentException("Gallery name must contain 1 to 120 characters.");
         var @event = await db.Events.SingleOrDefaultAsync(x => x.Id == command.EventId && x.OwnerId == ownerId, cancellationToken);
         if (@event is null) return null;
-        var photos = await GetEligiblePhotosAsync(command.EventId, command.PhotoIds, cancellationToken);
-        if (photos.Count != command.PhotoIds.Distinct().Count()) throw new ArgumentException("Every selected photo must belong to this event and be ready.");
+        var photos = await GetEligiblePhotosAsync(command.EventId, command.PhotoIds, command.AllMatching, command.InvitationId, cancellationToken);
+        if (!command.AllMatching && photos.Count != command.PhotoIds.Distinct().Count()) throw new ArgumentException("Every selected photo must belong to this event and be ready.");
 
         var now = DateTimeOffset.UtcNow;
         var gallery = new SharedGallery { Id = Guid.NewGuid(), EventId = @event.Id, PublicId = Guid.NewGuid(), Name = name, EnabledAt = now, CreatedAt = now, UpdatedAt = now };
@@ -42,7 +42,7 @@ public sealed class GalleryService(BizdenDbContext db, IObjectStorage storage) :
     {
         var gallery = await db.SharedGalleries.Include(item => item.Photos).SingleOrDefaultAsync(item => item.Id == galleryId && item.EventId == eventId && item.Event.OwnerId == ownerId && item.DeletedAt == null, cancellationToken);
         if (gallery is null) return null;
-        var photos = await GetEligiblePhotosAsync(eventId, photoIds, cancellationToken);
+        var photos = await GetEligiblePhotosAsync(eventId, photoIds, false, null, cancellationToken);
         if (photos.Count != photoIds.Distinct().Count()) throw new ArgumentException("Every selected photo must belong to this event and be ready.");
         gallery.Photos.Clear();
         var now = DateTimeOffset.UtcNow;
@@ -111,11 +111,14 @@ public sealed class GalleryService(BizdenDbContext db, IObjectStorage storage) :
     private async Task<SharedGallery?> FindPublicGalleryAsync(Guid publicId, CancellationToken cancellationToken) =>
         await db.SharedGalleries.AsNoTracking().Include(gallery => gallery.Event).SingleOrDefaultAsync(gallery => gallery.PublicId == publicId && gallery.DeletedAt == null, cancellationToken);
 
-    private async Task<List<Photo>> GetEligiblePhotosAsync(Guid eventId, IReadOnlyCollection<Guid> photoIds, CancellationToken cancellationToken)
+    private async Task<List<Photo>> GetEligiblePhotosAsync(Guid eventId, IReadOnlyCollection<Guid> photoIds, bool allMatching, Guid? invitationId, CancellationToken cancellationToken)
     {
         var ids = photoIds.Distinct().ToList();
-        if (ids.Count == 0) return [];
-        return await db.Photos.Where(photo => photo.EventId == eventId && photo.Status == PhotoStatus.Uploaded && photo.DeletedAt == null && ids.Contains(photo.Id)).ToListAsync(cancellationToken);
+        if (!allMatching && ids.Count == 0) return [];
+        var query = db.Photos.Where(photo => photo.EventId == eventId && photo.Status == PhotoStatus.Uploaded && photo.DeletedAt == null);
+        if (invitationId is not null) query = query.Where(photo => photo.InvitationId == invitationId);
+        if (!allMatching) query = query.Where(photo => ids.Contains(photo.Id));
+        return await query.ToListAsync(cancellationToken);
     }
 
     private static void ValidatePin(string pin)
