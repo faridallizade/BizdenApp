@@ -52,6 +52,18 @@ public sealed class GalleryService(BizdenDbContext db, IObjectStorage storage) :
         return new HostGalleryShare(gallery.Id, gallery.PublicId, gallery.Name, gallery.EnabledAt, photos.Count);
     }
 
+    public async Task<HostGalleryShare?> UpdatePinAsync(Guid ownerId, Guid eventId, Guid galleryId, string pin, CancellationToken cancellationToken)
+    {
+        ValidatePin(pin);
+        var gallery = await db.SharedGalleries.Include(item => item.Photos)
+            .SingleOrDefaultAsync(item => item.Id == galleryId && item.EventId == eventId && item.Event.OwnerId == ownerId && item.DeletedAt == null, cancellationToken);
+        if (gallery is null) return null;
+        gallery.PinHash = pinHasher.HashPassword(gallery, pin);
+        gallery.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return new HostGalleryShare(gallery.Id, gallery.PublicId, gallery.Name, gallery.EnabledAt, gallery.Photos.Count);
+    }
+
     public async Task<bool> DeleteAsync(Guid ownerId, Guid eventId, Guid galleryId, CancellationToken cancellationToken)
     {
         var gallery = await db.SharedGalleries.SingleOrDefaultAsync(item => item.Id == galleryId && item.EventId == eventId && item.Event.OwnerId == ownerId && item.DeletedAt == null, cancellationToken);

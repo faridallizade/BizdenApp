@@ -60,9 +60,12 @@ public sealed class AdminService(BizdenDbContext db) : IAdminService
         return true;
     }
 
-    public async Task<IReadOnlyList<AdminAuditItem>> ListAuditAsync(int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<AdminAuditPage> ListAuditAsync(int page, int pageSize, CancellationToken cancellationToken)
     {
         page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 100);
-        return await db.AuditLogs.AsNoTracking().OrderByDescending(log => log.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).Select(log => new AdminAuditItem(log.Id, log.ActorType, log.Action, log.EntityType, log.EntityId, log.Metadata, log.CreatedAt)).ToListAsync(cancellationToken);
+        var query = db.AuditLogs.AsNoTracking().OrderByDescending(log => log.CreatedAt);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).Select(log => new AdminAuditItem(log.Id, log.ActorType, log.Action, log.EntityType, log.EntityId, log.Metadata, log.CreatedAt)).ToListAsync(cancellationToken);
+        return new AdminAuditPage(items, page, pageSize, total);
     }
 }

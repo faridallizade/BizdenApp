@@ -280,6 +280,11 @@ events.MapPut("/{eventId:guid}/galleries/{galleryId:guid}/photos", async (Guid e
     try { return await service.ReplacePhotosAsync(OwnerId(user), eventId, galleryId, request.PhotoIds, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound(); }
     catch (ArgumentException exception) { return ValidationError(exception.Message); }
 });
+events.MapPatch("/{eventId:guid}/galleries/{galleryId:guid}/pin", async (Guid eventId, Guid galleryId, UpdateGalleryPinRequest request, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
+{
+    try { return await service.UpdatePinAsync(OwnerId(user), eventId, galleryId, request.Pin, cancellationToken) is { } result ? Results.Ok(result) : Results.NotFound(); }
+    catch (ArgumentException exception) { return ValidationError(exception.Message); }
+});
 events.MapDelete("/{eventId:guid}/galleries/{galleryId:guid}", async (Guid eventId, Guid galleryId, ClaimsPrincipal user, IHostGalleryService service, CancellationToken cancellationToken) =>
     await service.DeleteAsync(OwnerId(user), eventId, galleryId, cancellationToken) ? Results.NoContent() : Results.NotFound());
 
@@ -362,6 +367,7 @@ public sealed record GalleryShareRequest(string Pin);
 public sealed record GalleryUnlockRequest(string Pin);
 public sealed record CreateGalleryRequest(string Name, string Pin, IReadOnlyCollection<Guid> PhotoIds, bool AllMatching = false, Guid? InvitationId = null);
 public sealed record ReplaceGalleryPhotosRequest(IReadOnlyCollection<Guid> PhotoIds);
+public sealed record UpdateGalleryPinRequest(string Pin);
 public sealed record BulkDeletePhotosRequest(Guid EventId, IReadOnlyCollection<Guid> PhotoIds, Guid? InvitationId, bool AllMatching = false);
 public sealed record UpdateAdminHostRequest(bool IsActive, bool IsBlocked, string? BlockedReason);
 public sealed record CoverUploadRequest(string FileName, string MimeType, long FileSize);

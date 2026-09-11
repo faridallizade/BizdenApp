@@ -5,6 +5,7 @@ public interface IHostGalleryService
     Task<IReadOnlyList<HostGalleryShare>> ListAsync(Guid ownerId, Guid eventId, CancellationToken cancellationToken);
     Task<HostGalleryShare?> CreateAsync(Guid ownerId, CreateGalleryShareCommand command, CancellationToken cancellationToken);
     Task<HostGalleryShare?> ReplacePhotosAsync(Guid ownerId, Guid eventId, Guid galleryId, IReadOnlyCollection<Guid> photoIds, CancellationToken cancellationToken);
+    Task<HostGalleryShare?> UpdatePinAsync(Guid ownerId, Guid eventId, Guid galleryId, string pin, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(Guid ownerId, Guid eventId, Guid galleryId, CancellationToken cancellationToken);
     Task<HostGalleryShare?> GetAsync(Guid ownerId, Guid eventId, CancellationToken cancellationToken);
     Task<HostGalleryShare?> EnableAsync(Guid ownerId, Guid eventId, string pin, CancellationToken cancellationToken);

@@ -7,7 +7,7 @@ public interface IAdminService
     Task<AdminHost?> UpdateHostAsync(Guid hostId, UpdateAdminHostCommand command, CancellationToken cancellationToken);
     Task<AdminEventPage> ListEventsAsync(int page, int pageSize, CancellationToken cancellationToken);
     Task<bool> SoftDeleteEventAsync(Guid eventId, CancellationToken cancellationToken);
-    Task<IReadOnlyList<AdminAuditItem>> ListAuditAsync(int page, int pageSize, CancellationToken cancellationToken);
+    Task<AdminAuditPage> ListAuditAsync(int page, int pageSize, CancellationToken cancellationToken);
 }
 
 public sealed record UpdateAdminHostCommand(bool IsActive, bool IsBlocked, string? BlockedReason);
@@ -19,3 +19,4 @@ public sealed record AdminHost(Guid Id, string Name, string Email, bool IsActive
 public sealed record AdminEventPage(IReadOnlyList<AdminEvent> Items, int Page, int PageSize, int TotalCount);
 public sealed record AdminEvent(Guid Id, string Name, string HostEmail, string Status, int PhotoCount, long PhotoBytes, int QrCodes, int UsedQrCodes, int PublicGalleryCount, DateTimeOffset CreatedAt);
 public sealed record AdminAuditItem(Guid Id, string ActorType, string Action, string EntityType, Guid EntityId, string? Metadata, DateTimeOffset CreatedAt);
+public sealed record AdminAuditPage(IReadOnlyList<AdminAuditItem> Items, int Page, int PageSize, int TotalCount);
