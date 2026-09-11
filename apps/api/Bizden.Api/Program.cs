@@ -9,6 +9,7 @@ using Bizden.Application.Galleries;
 using Bizden.Application.PublicAccess;
 using Bizden.Application.Photos;
 using Bizden.Application.Administration;
+using Bizden.Application.Localization;
 using Bizden.Domain.Enums;
 using Bizden.Infrastructure.DependencyInjection;
 using Bizden.Infrastructure.Persistence;
@@ -18,11 +19,22 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Options;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 var isDevelopment = builder.Environment.IsDevelopment();
 
 builder.Services.AddHealthChecks();
+var supportedCultures = new[] { "az", "en", "ru" };
+builder.Services.AddLocalization();
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.SetDefaultCulture("az");
+    options.AddSupportedCultures(supportedCultures);
+    options.AddSupportedUICultures(supportedCultures);
+});
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65_536);
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -76,6 +88,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 app.UseForwardedHeaders();
+app.UseRequestLocalization(app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
 app.UseCors("web");
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -86,7 +99,7 @@ app.Use(async (context, next) =>
         if (context.Request.Path.StartsWithSegments("/api/host") && !context.Request.Path.StartsWithSegments("/api/host/antiforgery"))
         {
             try { await context.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(context); }
-            catch (AntiforgeryValidationException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; await context.Response.WriteAsJsonAsync(new { code = "INVALID_CSRF", message = "Request could not be verified." }); return; }
+            catch (AntiforgeryValidationException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; await context.Response.WriteAsJsonAsync(new { code = "INVALID_CSRF", message = Localize(context, "RequestCouldNotBeVerified") }); return; }
         }
     }
     await next();
@@ -117,38 +130,38 @@ var auth = app.MapGroup("/api/host/auth").RequireRateLimiting("host-auth");
 auth.MapPost("/register", async (RegisterHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.RegisterAsync(new RegisterHostCommand(request.Name, request.Email, request.Password), cancellationToken);
-    if (result.RequiresEmailVerification && result.ErrorCode is not null) return AuthError(result.ErrorCode, StatusCodes.Status503ServiceUnavailable);
+    if (result.RequiresEmailVerification && result.ErrorCode is not null) return AuthError(context, result.ErrorCode, StatusCodes.Status503ServiceUnavailable);
     if (result.RequiresEmailVerification) return Results.Accepted($"/api/host/auth/verify-email", new { requiresEmailVerification = true });
-    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    if (!result.Succeeded) return AuthError(context, result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
     return Results.Created("/api/host/auth/me", new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 });
 auth.MapPost("/verify-email", async (VerifyHostEmailRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.VerifyEmailAsync(new VerifyHostEmailCommand(request.Email, request.Code), cancellationToken);
-    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    if (!result.Succeeded) return AuthError(context, result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
     return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 });
-auth.MapPost("/resend-verification", async (ResendVerificationRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+auth.MapPost("/resend-verification", async (ResendVerificationRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.ResendVerificationAsync(request.Email, cancellationToken);
-    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "VERIFICATION_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
+    return result.ErrorCode is null ? Results.Accepted() : AuthError(context, result.ErrorCode, result.ErrorCode == "VERIFICATION_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
 });
-auth.MapPost("/password-reset/request", async (PasswordResetRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+auth.MapPost("/password-reset/request", async (PasswordResetRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.RequestPasswordResetAsync(request.Email, cancellationToken);
-    return result.ErrorCode is null ? Results.Accepted() : AuthError(result.ErrorCode, result.ErrorCode == "RESET_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
+    return result.ErrorCode is null ? Results.Accepted() : AuthError(context, result.ErrorCode, result.ErrorCode == "RESET_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable);
 });
-auth.MapPost("/password-reset/confirm", async (PasswordResetConfirmRequest request, IHostAuthenticationService service, CancellationToken cancellationToken) =>
+auth.MapPost("/password-reset/confirm", async (PasswordResetConfirmRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.ResetPasswordAsync(new ResetPasswordCommand(request.Email, request.Code, request.Password), cancellationToken);
-    return result.Succeeded ? Results.NoContent() : AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    return result.Succeeded ? Results.NoContent() : AuthError(context, result.ErrorCode!, StatusCodes.Status400BadRequest);
 });
 auth.MapPost("/login", async (LoginHostRequest request, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.AuthenticateAsync(new LoginHostCommand(request.Email, request.Password), cancellationToken);
-    if (!result.Succeeded) return AuthError("INVALID_CREDENTIALS", StatusCodes.Status401Unauthorized);
+    if (!result.Succeeded) return AuthError(context, "INVALID_CREDENTIALS", StatusCodes.Status401Unauthorized);
     await SignInAsync(context, result.User!);
     return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 });
@@ -158,7 +171,7 @@ auth.MapGet("/me", (ClaimsPrincipal user) => Results.Ok(new HostSessionResponse(
 auth.MapPut("/profile", async (UpdateHostProfileRequest request, ClaimsPrincipal principal, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.UpdateProfileAsync(OwnerId(principal), new UpdateHostProfileCommand(request.Name), cancellationToken);
-    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    if (!result.Succeeded) return AuthError(context, result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
     return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 }).RequireAuthorization();
@@ -170,12 +183,12 @@ auth.MapPost("/email-change/request", async (EmailChangeRequest request, ClaimsP
         await SignInAsync(context, result.User!);
         return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
     }
-    return result.ErrorCode is null ? Results.Accepted("/api/host/auth/email-change/confirm", new { requiresEmailVerification = true }) : AuthError(result.ErrorCode, result.ErrorCode == "EMAIL_CHANGE_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
+    return result.ErrorCode is null ? Results.Accepted("/api/host/auth/email-change/confirm", new { requiresEmailVerification = true }) : AuthError(context, result.ErrorCode, result.ErrorCode == "EMAIL_CHANGE_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
 }).RequireAuthorization();
 auth.MapPost("/email-change/confirm", async (EmailChangeConfirmRequest request, ClaimsPrincipal principal, IHostAuthenticationService service, HttpContext context, CancellationToken cancellationToken) =>
 {
     var result = await service.ConfirmEmailChangeAsync(OwnerId(principal), request.Code, cancellationToken);
-    if (!result.Succeeded) return AuthError(result.ErrorCode!, StatusCodes.Status400BadRequest);
+    if (!result.Succeeded) return AuthError(context, result.ErrorCode!, StatusCodes.Status400BadRequest);
     await SignInAsync(context, result.User!);
     return Results.Ok(new HostSessionResponse(result.User!.Id, result.User.Name, result.User.Email, result.User.IsAdmin));
 }).RequireAuthorization();
@@ -312,8 +325,23 @@ static Task SignInAsync(HttpContext context, Bizden.Domain.Entities.HostUser use
     return context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 }
 
-static IResult AuthError(string code, int statusCode) => Results.Json(new { code, message = "Authentication request could not be completed." }, statusCode: statusCode);
+static IResult AuthError(HttpContext context, string code, int statusCode) => Results.Json(new { code, message = Localize(context, AuthMessageKey(code)) }, statusCode: statusCode);
 static IResult ValidationError(string message) => Results.BadRequest(new { code = "VALIDATION_ERROR", message });
+static string Localize(HttpContext context, string key) => context.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[key];
+static string AuthMessageKey(string code) => code switch
+{
+    "INVALID_CREDENTIALS" => "InvalidCredentials",
+    "INVALID_PASSWORD" => "InvalidPassword",
+    "INVALID_REGISTRATION" => "RegistrationCouldNotBeCompleted",
+    "INVALID_OR_EXPIRED_CODE" => "InvalidOrExpiredCode",
+    "INVALID_VERIFICATION_REQUEST" => "InvalidVerificationRequest",
+    "VERIFICATION_RATE_LIMITED" => "VerificationRateLimited",
+    "RESET_RATE_LIMITED" => "ResetRateLimited",
+    "EMAIL_CHANGE_RATE_LIMITED" => "EmailChangeRateLimited",
+    "INVALID_PROFILE" => "InvalidProfile",
+    "INVALID_EMAIL" => "InvalidEmail",
+    _ => "AuthenticationRequestCouldNotBeCompleted"
+};
 static Guid OwnerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
 public sealed record RegisterHostRequest(string Name, string Email, string Password);
