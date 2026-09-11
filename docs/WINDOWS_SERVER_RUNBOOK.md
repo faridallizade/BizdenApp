@@ -35,6 +35,8 @@ docker compose ps
 
 Expected running services are `bizden-web`, `bizden-api`, and `bizden-postgres`. `bizden-migrate-1` exits successfully after applying database migrations; that is expected.
 
+`bizden-migrate-1` must apply the full current migration set (authentication, QR, media processing, galleries and admin). If it fails, do not start an event: inspect its logs with `docker compose logs migrate`, fix the database connection, and rerun the stack.
+
 Open:
 
 ```text
@@ -92,4 +94,5 @@ When a Cloudflare Tunnel and domain are added, add that HTTPS domain as another 
 - Replace the current learning/development R2 credentials with a new bucket-scoped token.
 - Use a strong `POSTGRES_PASSWORD` in `.env`.
 - Back up the Docker PostgreSQL volume and verify restore steps.
+- Confirm a test OTP, QR upload, gallery PIN, ZIP export and admin login after each production update.
 - Keep Windows awake, connected to power, and prevent automatic restarts during events.

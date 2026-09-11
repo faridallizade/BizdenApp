@@ -19,7 +19,9 @@ chmod +x scripts/local-up.sh scripts/local-down.sh
 ./scripts/local-up.sh
 ```
 
-The `migrate` container waits for PostgreSQL and applies the EF Core `InitialCreate` migration before the API starts.
+The `migrate` container waits for PostgreSQL and applies every committed EF Core migration before the API starts. This includes authentication, QR invitations, photo derivatives, exports, public galleries and admin management.
+
+For a VPS deployment, use the production environment file and a managed or backed-up PostgreSQL instance; this local compose stack is for development and Windows testing only.
 
 ## Stop
 
