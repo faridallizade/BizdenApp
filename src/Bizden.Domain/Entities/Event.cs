@@ -22,6 +22,8 @@ public sealed class Event
     public EventStatus Status { get; set; } = EventStatus.Draft;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
     public ICollection<Invitation> Invitations { get; set; } = new List<Invitation>();
     public ICollection<Photo> Photos { get; set; } = new List<Photo>();
+    public ICollection<SharedGallery> SharedGalleries { get; set; } = new List<SharedGallery>();
 }

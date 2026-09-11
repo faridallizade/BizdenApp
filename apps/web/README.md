@@ -1,32 +1,29 @@
-# React + TypeScript + Vite
+# Bizdən Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + TypeScript + Vite host portalı və qonaq upload/public-gallery interfeysidir.
 
-Currently, two official plugins are available:
+## Əmrlər
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
+npm run build
+npm run lint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Development server eyni origin üzərindən API-yə müraciət edir. Production-da Nginx `/api` sorğularını .NET API-yə proxy edir; browser-da ayrıca API URL konfiqurasiyası tələb olunmur.
+
+## Struktur
+
+- `src/components/`: auth, profil, gallery, admin və UI hissələri.
+- `src/lib/api.ts`: cookie/CSRF dəstəyi olan API client.
+- `src/lib/qrPdf.ts`: branded QR PDF generatoru.
+- `src/i18n/`: `az`, `en`, `ru` dil resursları və localStorage dil seçimi.
+
+## Route-lar
+
+- `/`: host dashboard
+- `/q/:token`: qonaq foto upload səhifəsi
+- `/g/:publicId`: PIN-li public gallery
+- `/profile`: host profili
+- `/admin`: admin panel (yalnız admin session)

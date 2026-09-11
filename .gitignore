@@ -6,4 +6,6 @@ dist/
 .env.*
 !.env.example
 secrets.json
+# Private business/planning material. Keep this on the project machine only.
+business-plan/
 .DS_Store

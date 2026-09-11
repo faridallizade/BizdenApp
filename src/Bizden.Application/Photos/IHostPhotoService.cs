@@ -6,6 +6,7 @@ public interface IHostPhotoService
     Task<HostPhotoDownload?> GetDownloadAsync(Guid ownerId, Guid photoId, CancellationToken cancellationToken);
     Task<HostPhotoExport?> CreateExportAsync(Guid ownerId, Guid eventId, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(Guid ownerId, Guid photoId, CancellationToken cancellationToken);
+    Task<int?> DeleteManyAsync(Guid ownerId, Guid eventId, IReadOnlyCollection<Guid> photoIds, Guid? invitationId, bool allMatching, CancellationToken cancellationToken);
     Task DeleteStoredObjectsAsync(CancellationToken cancellationToken);
 }
 

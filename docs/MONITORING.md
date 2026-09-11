@@ -20,3 +20,9 @@ Recommended alerts:
 - `/health/ready` returns anything except HTTP 200.
 
 Counters are process-local and reset whenever the API container restarts. For durable history and alerts, scrape them with Prometheus, Grafana Cloud, or another Prometheus-compatible monitoring service.
+
+## Operational checks
+
+- The photo derivative and export background workers run inside the API process. A restart interrupts in-progress work; queued jobs remain in PostgreSQL and are retried by the worker.
+- R2 is the durable store for originals, thumbnails, previews and ZIP exports. Soft-deleted media is removed by the cleanup worker; do not manually delete keys while a job is running.
+- Alert on a growing export queue and on media jobs that remain `Processing` longer than the expected upload/export window.

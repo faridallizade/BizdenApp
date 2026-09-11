@@ -22,5 +22,6 @@ public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.HasIndex(@event => @event.PublicId).IsUnique();
         builder.HasIndex(@event => @event.Slug).IsUnique();
         builder.HasIndex(@event => @event.OwnerId);
+        builder.HasQueryFilter(@event => @event.DeletedAt == null);
     }
 }

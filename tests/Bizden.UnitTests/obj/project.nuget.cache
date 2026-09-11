@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "PP2icwkc6Bs=",
+  "dgSpecHash": "XY1CzwRdUWk=",
   "success": true,
-  "projectFilePath": "/Users/Zade/Desktop/Projects/Wedding Memories App/tests/Bizden.UnitTests/Bizden.UnitTests.csproj",
+  "projectFilePath": "/Users/Zade/Desktop/Projects/Bizden App/tests/Bizden.UnitTests/Bizden.UnitTests.csproj",
   "expectedPackageFiles": [
     "/Users/Zade/.nuget/packages/coverlet.collector/6.0.0/coverlet.collector.6.0.0.nupkg.sha512",
     "/Users/Zade/.nuget/packages/microsoft.codecoverage/17.8.0/microsoft.codecoverage.17.8.0.nupkg.sha512",

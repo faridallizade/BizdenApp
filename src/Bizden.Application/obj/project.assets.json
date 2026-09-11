@@ -1,11 +1,30 @@
 {
   "version": 3,
   "targets": {
-    "net8.0": {}
+    "net8.0": {
+      "Bizden.Domain/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/Bizden.Domain.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Bizden.Domain.dll": {}
+        }
+      }
+    }
   },
-  "libraries": {},
+  "libraries": {
+    "Bizden.Domain/1.0.0": {
+      "type": "project",
+      "path": "../Bizden.Domain/Bizden.Domain.csproj",
+      "msbuildProject": "../Bizden.Domain/Bizden.Domain.csproj"
+    }
+  },
   "projectFileDependencyGroups": {
-    "net8.0": []
+    "net8.0": [
+      "Bizden.Domain >= 1.0.0"
+    ]
   },
   "packageFolders": {
     "/Users/Zade/.nuget/packages/": {}
@@ -13,11 +32,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Application/Bizden.Application.csproj",
+      "projectUniqueName": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Application/Bizden.Application.csproj",
       "projectName": "Bizden.Application",
-      "projectPath": "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Application/Bizden.Application.csproj",
+      "projectPath": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Application/Bizden.Application.csproj",
       "packagesPath": "/Users/Zade/.nuget/packages/",
-      "outputPath": "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Application/obj/",
+      "outputPath": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Application/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/Users/Zade/.nuget/NuGet/NuGet.Config"
@@ -31,10 +50,15 @@
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
-          "projectReferences": {}
+          "projectReferences": {
+            "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/Bizden.Domain.csproj": {
+              "projectPath": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/Bizden.Domain.csproj"
+            }
+          }
         }
       },
       "warningProperties": {
+        "allWarningsAsErrors": true,
         "warnAsError": [
           "NU1605"
         ]

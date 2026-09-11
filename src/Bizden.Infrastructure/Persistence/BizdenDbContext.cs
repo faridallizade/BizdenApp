@@ -11,6 +11,9 @@ public sealed class BizdenDbContext(DbContextOptions<BizdenDbContext> options) :
     public DbSet<Photo> Photos => Set<Photo>();
     public DbSet<UploadReservation> UploadReservations => Set<UploadReservation>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<SharedGallery> SharedGalleries => Set<SharedGallery>();
+    public DbSet<SharedGalleryPhoto> SharedGalleryPhotos => Set<SharedGalleryPhoto>();
+    public DbSet<PhotoExportJob> PhotoExportJobs => Set<PhotoExportJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -7,13 +7,27 @@ namespace Bizden.Infrastructure.Email;
 
 public sealed class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEmailSender> logger) : IEmailSender
 {
-    public async Task<bool> SendVerificationCodeAsync(string recipient, string code, CancellationToken cancellationToken)
+    public Task<bool> SendOneTimeCodeAsync(string recipient, EmailCodePurpose purpose, string code, CancellationToken cancellationToken)
+    {
+        var (subject, body) = purpose switch
+        {
+            EmailCodePurpose.PasswordReset => ("Bizdən şifrə sıfırlama", $"Bizdən hesabınızın şifrəsini sıfırlamaq üçün kodunuz: {code}\n\nKod 15 dəqiqə etibarlıdır. Bu sorğunu siz etməmisinizsə, bu emaili nəzərə almayın."),
+            EmailCodePurpose.EmailChange => ("Bizdən email dəyişmə", $"Bizdən hesabınızın email ünvanını dəyişmək üçün kodunuz: {code}\n\nKod 15 dəqiqə etibarlıdır."),
+            _ => ("Bizdən email təsdiqi", $"Bizdən hesabınızı təsdiqləmək üçün kodunuz: {code}\n\nKod 15 dəqiqə etibarlıdır.")
+        };
+        return SendAsync(recipient, subject, body, cancellationToken);
+    }
+
+    public Task<bool> SendExportReadyAsync(string recipient, string eventName, CancellationToken cancellationToken) =>
+        SendAsync(recipient, "Bizdən export hazırdır", $"\"{eventName}\" tədbirinizin ZIP exportu hazırdır. Hesabınıza daxil olaraq yükləyə bilərsiniz.", cancellationToken);
+
+    private async Task<bool> SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken)
     {
         var host = configuration["Smtp:Host"];
         var from = configuration["Smtp:From"];
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(from))
         {
-            logger.LogError("SMTP is not configured; verification email for {Recipient} was not sent", recipient);
+            logger.LogError("SMTP is not configured; email for {Recipient} was not sent", recipient);
             return false;
         }
 
@@ -29,8 +43,8 @@ public sealed class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEm
             if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password)) client.Credentials = new NetworkCredential(username, password);
             using var message = new MailMessage(from, recipient)
             {
-                Subject = "Bizdən email təsdiqi",
-                Body = $"Bizdən hesabınızı təsdiqləmək üçün kodunuz: {code}\n\nKod 15 dəqiqə etibarlıdır.",
+                Subject = subject,
+                Body = body,
                 IsBodyHtml = false
             };
             var fromName = configuration["Smtp:FromName"];
@@ -40,7 +54,7 @@ public sealed class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEm
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Verification email could not be sent to {Recipient}", recipient);
+            logger.LogError(exception, "Email could not be sent to {Recipient}", recipient);
             return false;
         }
     }

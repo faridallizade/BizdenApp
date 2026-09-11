@@ -25,4 +25,5 @@ public sealed class Photo
     public Event Event { get; set; } = null!;
     public Invitation Invitation { get; set; } = null!;
     public UploadReservation? UploadReservation { get; set; }
+    public ICollection<SharedGalleryPhoto> SharedGalleries { get; set; } = new List<SharedGalleryPhoto>();
 }

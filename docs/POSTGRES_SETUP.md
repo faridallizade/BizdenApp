@@ -1,6 +1,6 @@
-# PostgreSQL — Phase 2 local setup
+# PostgreSQL local setup
 
-Phase 2 has created the schema migration, but no database has been created or modified because a local PostgreSQL connection was not provided.
+Bizdən uses PostgreSQL for authentication, events, QR invitations, public galleries, media jobs and audit records. Migrations are committed; applying them is required before running the API against a fresh database.
 
 ## Your one-time task
 
@@ -23,4 +23,8 @@ After the connection string is configured, run:
   --context BizdenDbContext
 ```
 
-This applies the existing `InitialCreate` migration. It creates the metadata tables only; no R2 storage, authentication flow, QR endpoint or upload feature has been added yet.
+This applies every committed migration, including authentication, photo derivatives, exports, public galleries and admin management. Run it again after pulling a new migration.
+
+## Production check
+
+Before deploying a new API build, back up the database and run the same command with the production connection string injected through the secret store. Confirm `__EFMigrationsHistory` contains the newest migration, then check `/health/ready`.

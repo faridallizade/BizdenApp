@@ -86,6 +86,9 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -157,6 +160,13 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("BlockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BlockedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -164,6 +174,16 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("EmailChangeCodeExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EmailChangeCodeHash")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("EmailChangeCodeSentAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("EmailVerificationCodeHash")
                         .HasMaxLength(512)
@@ -181,6 +201,9 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -194,6 +217,24 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("PasswordResetCodeExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordResetCodeHash")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("PasswordResetCodeSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PendingEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("PendingNormalizedEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -345,6 +386,120 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Bizden.Domain.Entities.PhotoExportJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("RequestedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "Status")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Queued', 'Processing')");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("photo_export_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("Bizden.Domain.Entities.SharedGallery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("EnabledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("PinHash")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("EventId", "DeletedAt");
+
+                    b.ToTable("shared_galleries", (string)null);
+                });
+
+            modelBuilder.Entity("Bizden.Domain.Entities.SharedGalleryPhoto", b =>
+                {
+                    b.Property<Guid>("SharedGalleryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PhotoId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("SharedGalleryId", "PhotoId");
+
+                    b.HasIndex("PhotoId");
+
+                    b.ToTable("shared_gallery_photos", (string)null);
+                });
+
             modelBuilder.Entity("Bizden.Domain.Entities.UploadReservation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -423,6 +578,47 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                     b.Navigation("Invitation");
                 });
 
+            modelBuilder.Entity("Bizden.Domain.Entities.PhotoExportJob", b =>
+                {
+                    b.HasOne("Bizden.Domain.Entities.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("Bizden.Domain.Entities.SharedGallery", b =>
+                {
+                    b.HasOne("Bizden.Domain.Entities.Event", "Event")
+                        .WithMany("SharedGalleries")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("Bizden.Domain.Entities.SharedGalleryPhoto", b =>
+                {
+                    b.HasOne("Bizden.Domain.Entities.Photo", "Photo")
+                        .WithMany("SharedGalleries")
+                        .HasForeignKey("PhotoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Bizden.Domain.Entities.SharedGallery", "SharedGallery")
+                        .WithMany("Photos")
+                        .HasForeignKey("SharedGalleryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Photo");
+
+                    b.Navigation("SharedGallery");
+                });
+
             modelBuilder.Entity("Bizden.Domain.Entities.UploadReservation", b =>
                 {
                     b.HasOne("Bizden.Domain.Entities.Invitation", "Invitation")
@@ -447,6 +643,8 @@ namespace Bizden.Infrastructure.Persistence.Migrations
                     b.Navigation("Invitations");
 
                     b.Navigation("Photos");
+
+                    b.Navigation("SharedGalleries");
                 });
 
             modelBuilder.Entity("Bizden.Domain.Entities.Invitation", b =>
@@ -458,7 +656,14 @@ namespace Bizden.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Bizden.Domain.Entities.Photo", b =>
                 {
+                    b.Navigation("SharedGalleries");
+
                     b.Navigation("UploadReservation");
+                });
+
+            modelBuilder.Entity("Bizden.Domain.Entities.SharedGallery", b =>
+                {
+                    b.Navigation("Photos");
                 });
 #pragma warning restore 612, 618
         }

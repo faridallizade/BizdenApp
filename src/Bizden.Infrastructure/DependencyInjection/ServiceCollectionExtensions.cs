@@ -15,6 +15,8 @@ using Bizden.Infrastructure.PublicAccess;
 using Bizden.Infrastructure.Photos;
 using Bizden.Infrastructure.Persistence;
 using Bizden.Infrastructure.Observability;
+using Bizden.Infrastructure.Administration;
+using Bizden.Application.Administration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,9 +35,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IHostEventService, HostEventService>();
+        services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IInvitationManagementService, InvitationManagementService>();
         services.AddScoped<IPublicQrService, PublicQrService>();
         services.AddScoped<IHostPhotoService, HostPhotoService>();
+        services.AddScoped<IPhotoExportService, PhotoExportService>();
         services.AddScoped<IHostGalleryService, GalleryService>();
         services.AddScoped<IPublicGalleryService, GalleryService>();
         services.AddSingleton<RuntimeMetrics>();
@@ -43,6 +47,7 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<ReservationCleanupWorker>();
         services.AddHostedService<DeletedPhotoCleanupWorker>();
         services.AddHostedService<PhotoProcessingWorker>();
+        services.AddHostedService<PhotoExportWorker>();
 
         return services;
     }
