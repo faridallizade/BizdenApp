@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Domain/Bizden.Domain.csproj": {}
+    "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/Bizden.Domain.csproj": {}
   },
   "projects": {
-    "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Domain/Bizden.Domain.csproj": {
+    "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/Bizden.Domain.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Domain/Bizden.Domain.csproj",
+        "projectUniqueName": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/Bizden.Domain.csproj",
         "projectName": "Bizden.Domain",
-        "projectPath": "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Domain/Bizden.Domain.csproj",
+        "projectPath": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/Bizden.Domain.csproj",
         "packagesPath": "/Users/Zade/.nuget/packages/",
-        "outputPath": "/Users/Zade/Desktop/Projects/Wedding Memories App/src/Bizden.Domain/obj/",
+        "outputPath": "/Users/Zade/Desktop/Projects/Bizden App/src/Bizden.Domain/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/Zade/.nuget/NuGet/NuGet.Config"
@@ -29,6 +29,7 @@
           }
         },
         "warningProperties": {
+          "allWarningsAsErrors": true,
           "warnAsError": [
             "NU1605"
           ]
